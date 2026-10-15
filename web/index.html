@@ -828,7 +828,7 @@
 
   <footer>
     <span>VoltWatch Headless Metrology & Sentinel • Zero Server Dependency</span>
-    <span>REST: <a id="link-api-status" href="/api/status" target="_blank" rel="noopener noreferrer">/api/status</a> | History: <a id="link-api-history" href="/api/history" target="_blank" rel="noopener noreferrer">/api/history</a> | SSE: <a id="link-api-events" href="/api/events" target="_blank" rel="noopener noreferrer">/api/events</a></span>
+    <span>REST: <a id="link-api-status" href="http://192.168.1.17/api/status" target="_blank" rel="noopener noreferrer">/api/status</a> | History: <a id="link-api-history" href="http://192.168.1.17/api/history" target="_blank" rel="noopener noreferrer">/api/history</a> | SSE: <a id="link-api-events" href="http://192.168.1.17/api/events" target="_blank" rel="noopener noreferrer">/api/events</a></span>
   </footer>
 </div>
 
@@ -916,15 +916,37 @@
 
     let API_BASE = resolveBase();
 
+    function normalizeTargetUrl(url) {
+      if (!url || typeof url !== 'string') return DEFAULT_TARGET;
+      let trimmed = url.trim();
+      if (!trimmed) return DEFAULT_TARGET;
+      if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+        trimmed = 'http://' + trimmed;
+      }
+      return trimmed.replace(/\/+$/, '');
+    }
+
     function updateFooterLinks() {
-      const base = API_BASE || '';
+      const base = normalizeTargetUrl(API_BASE);
       const lStatus = document.getElementById('link-api-status');
       const lHist = document.getElementById('link-api-history');
       const lEvents = document.getElementById('link-api-events');
-      if (lStatus) lStatus.href = `${base}/api/status`;
-      if (lHist) lHist.href = `${base}/api/history`;
-      if (lEvents) lEvents.href = `${base}/api/events`;
+      if (lStatus) {
+        lStatus.href = `${base}/api/status`;
+        lStatus.title = `REST: ${base}/api/status`;
+      }
+      if (lHist) {
+        lHist.href = `${base}/api/history`;
+        lHist.title = `History: ${base}/api/history`;
+      }
+      if (lEvents) {
+        lEvents.href = `${base}/api/events`;
+        lEvents.title = `SSE: ${base}/api/events`;
+      }
     }
+
+    // Immediately bind footer links on script execution
+    updateFooterLinks();
 
     function switchTarget(rawVal) {
       const val = (rawVal || '').trim();
@@ -1240,7 +1262,30 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'voltwatch_target_ip') {
+        API_BASE = resolveBase();
+        updateFooterLinks();
+        const input = document.getElementById('input-target-ip');
+        if (input) {
+          input.value = API_BASE || DEFAULT_TARGET;
+        }
+        if (sseEventSource) {
+          sseEventSource.close();
+          sseEventSource = null;
+        }
+        if (fallbackInterval) {
+          clearInterval(fallbackInterval);
+          fallbackInterval = null;
+        }
+        setConnected(false, 'Connecting...');
+        initSSE();
+        fetchHistory();
+        pollStatus();
+      }
+    });
+
+    function init() {
       const modal = document.getElementById('settings-modal');
       const input = document.getElementById('input-target-ip');
       const btnOpen = document.getElementById('btn-open-settings');
@@ -1313,11 +1358,20 @@
       }
 
       updateFooterLinks();
-      document.getElementById('btn-refresh-history').addEventListener('click', fetchHistory);
+      const btnRefresh = document.getElementById('btn-refresh-history');
+      if (btnRefresh) {
+        btnRefresh.addEventListener('click', fetchHistory);
+      }
       initSSE();
       fetchHistory();
       pollStatus();
-    });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
   })();
 </script>
 </body>

@@ -419,6 +419,11 @@ TEST_CASE(WebDashboard, StandaloneWebAssetIntegrity) {
     ASSERT_TRUE(sHtml.find("Browser Mixed Content policy") != std::string::npos);
     ASSERT_TRUE(sHtml.find("diag-url") != std::string::npos);
     ASSERT_TRUE(sHtml.find("diag-status") != std::string::npos);
+    ASSERT_TRUE(sHtml.find("link-api-status") != std::string::npos);
+    ASSERT_TRUE(sHtml.find("link-api-history") != std::string::npos);
+    ASSERT_TRUE(sHtml.find("link-api-events") != std::string::npos);
+    ASSERT_TRUE(sHtml.find("updateFooterLinks") != std::string::npos);
+    ASSERT_TRUE(sHtml.find("normalizeTargetUrl") != std::string::npos);
 }
 
 TEST_CASE(WebDashboard, HealthCheckAndPreflightCors) {
