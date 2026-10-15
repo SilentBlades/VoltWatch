@@ -3,9 +3,6 @@ name: Deploy Web Dashboard to GitHub Pages
 on:
   push:
     branches: ["main"]
-    paths:
-      - "web/**"
-      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -30,7 +27,7 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload web artifact
+      - name: Upload web directory
         uses: actions/upload-pages-artifact@v3
         with:
           path: 'web/'
