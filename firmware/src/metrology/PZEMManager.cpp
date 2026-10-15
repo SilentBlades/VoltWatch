@@ -50,6 +50,8 @@ public:
           m_gridAddr(gridAddr), m_invAddr(invAddr) {}
 
     void init() {
+        pinMode(m_gridRx, INPUT_PULLUP);
+        pinMode(m_invRx, INPUT_PULLUP);
         Serial1.begin(VoltWatch::Config::PZEM_BAUD_RATE, SERIAL_8N1, m_gridRx, m_gridTx);
         Serial1.setTimeout(50);
         Serial2.begin(VoltWatch::Config::PZEM_BAUD_RATE, SERIAL_8N1, m_invRx, m_invTx);
@@ -82,12 +84,17 @@ public:
         // 3. Fail-fast non-blocking wait: Wait at most 50 ms for bytes to begin arriving
         uint32_t startWait = millis();
         while (port->available() < 7 && (millis() - startWait < 50)) {
+#if defined(ESP32)
+            vTaskDelay(pdMS_TO_TICKS(2));
+#else
             yield();
+#endif
         }
 
         // If 50 ms elapses without bytes in the buffer, immediately abort!
         // Never block Core 1 waiting on unpowered or disconnected sensors!
         if (port->available() < 7) {
+            esp_task_wdt_reset();
             return false;
         }
 
@@ -99,20 +106,27 @@ public:
             if (port->available() > 0) {
                 resp[idx++] = static_cast<uint8_t>(port->read());
             } else {
+#if defined(ESP32)
+                vTaskDelay(pdMS_TO_TICKS(2));
+#else
                 yield();
+#endif
             }
         }
 
         if (idx != 25) {
+            esp_task_wdt_reset();
             return false;
         }
 
         // 5. Verify Modbus response header and CRC16 checksum
         if (resp[0] != addr || resp[1] != 0x04 || resp[2] != 0x14) {
+            esp_task_wdt_reset();
             return false;
         }
         uint16_t expectedCrc = static_cast<uint16_t>(resp[23]) | (static_cast<uint16_t>(resp[24]) << 8);
         if (pzemCrc16(resp, 23) != expectedCrc) {
+            esp_task_wdt_reset();
             return false;
         }
 
