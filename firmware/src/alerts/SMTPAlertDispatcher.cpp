@@ -9,6 +9,9 @@
 #include <Arduino.h>
 #include <time.h>
 #include <WiFi.h>
+#if __has_include(<LittleFS.h>)
+#include <LittleFS.h>
+#endif
 #if __has_include(<esp_sntp.h>)
 #include <esp_sntp.h>
 #endif
@@ -31,14 +34,20 @@ SMTPAlertDispatcher::~SMTPAlertDispatcher() {
         vQueueDelete(m_freeRtosQueue);
         m_freeRtosQueue = nullptr;
     }
+    if (m_queueMutex != nullptr) {
+        vSemaphoreDelete(m_queueMutex);
+        m_queueMutex = nullptr;
+    }
 #endif
 }
 
 #if defined(ARDUINO) || defined(ESP32)
 void SMTPAlertDispatcher::smtpTaskWorker(void* pvParameters) {
     SMTPAlertDispatcher* self = static_cast<SMTPAlertDispatcher*>(pvParameters);
+    Serial.println("[SMTP] FreeRTOS background worker task started on Core 0.");
     while (true) {
         if (self->getPendingQueueCount() > 0) {
+            Serial.printf("[SMTP] Processing queued alert (Pending count: %zu)...\n", self->getPendingQueueCount());
             // Process queued alerts in FIFO order when network is available
             bool success = self->processNextPendingAlert();
             if (!success) {
@@ -61,6 +70,9 @@ void SMTPAlertDispatcher::init() {
     initNtp();
 
 #if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex == nullptr) {
+        m_queueMutex = xSemaphoreCreateMutex();
+    }
     if (m_freeRtosQueue == nullptr) {
         m_freeRtosQueue = xQueueCreate(VoltWatch::Config::SMTP_QUEUE_CAPACITY, sizeof(uint8_t));
     }
@@ -306,11 +318,23 @@ AlertMessage SMTPAlertDispatcher::generateRestorationPayload(const OutageRecord&
 }
 
 bool SMTPAlertDispatcher::queueAlert(const AlertMessage& alert) {
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreTake(m_queueMutex, portMAX_DELAY);
+    }
+#endif
+
     if (m_pendingQueue.size() >= VoltWatch::Config::SMTP_QUEUE_CAPACITY) {
         // Drop oldest unconfirmed alert if queue reaches capacity
         m_pendingQueue.pop_front();
     }
     m_pendingQueue.push_back(alert);
+
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreGive(m_queueMutex);
+    }
+#endif
 
     // In unit testing mock mode with network online, auto-process immediately
     if (m_mockMode && m_mockNetworkOnline) {
@@ -321,10 +345,6 @@ bool SMTPAlertDispatcher::queueAlert(const AlertMessage& alert) {
 }
 
 bool SMTPAlertDispatcher::processNextPendingAlert() {
-    if (m_pendingQueue.empty()) {
-        return false;
-    }
-
     // Check network connectivity
 #if defined(ARDUINO) || defined(ESP32)
     if (WiFi.status() != WL_CONNECTED) {
@@ -336,19 +356,98 @@ bool SMTPAlertDispatcher::processNextPendingAlert() {
     }
 #endif
 
-    AlertMessage& alert = m_pendingQueue.front();
+    AlertMessage alert;
+    bool hasItem = false;
+
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreTake(m_queueMutex, portMAX_DELAY);
+    }
+#endif
+
+    if (!m_pendingQueue.empty()) {
+        alert = m_pendingQueue.front();
+        hasItem = true;
+    }
+
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreGive(m_queueMutex);
+    }
+#endif
+
+    if (!hasItem) {
+        return false;
+    }
+
+    // Transport execution occurs without holding the queue mutex
+    // so loop() on Core 1 is never stalled while mbedTLS handshakes take place!
     bool ok = executeSmtpTransport(alert);
+
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreTake(m_queueMutex, portMAX_DELAY);
+    }
+#endif
 
     if (ok) {
         alert.sentSuccessfully = true;
         m_lastSentAlert = alert;
         m_sentAlertCount++;
-        m_pendingQueue.pop_front();
+        if (!m_pendingQueue.empty()) {
+            m_pendingQueue.pop_front();
+        }
+#if defined(ARDUINO) || defined(ESP32)
+        if (m_queueMutex != nullptr) {
+            xSemaphoreGive(m_queueMutex);
+        }
+#endif
         return true;
     } else {
-        alert.retryCount++;
+        if (!m_pendingQueue.empty()) {
+            m_pendingQueue.front().retryCount++;
+        }
+#if defined(ARDUINO) || defined(ESP32)
+        if (m_queueMutex != nullptr) {
+            xSemaphoreGive(m_queueMutex);
+        }
+#endif
         return false;
     }
+}
+
+size_t SMTPAlertDispatcher::getPendingQueueCount() const {
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreTake(m_queueMutex, portMAX_DELAY);
+    }
+#endif
+
+    size_t count = m_pendingQueue.size();
+
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreGive(m_queueMutex);
+    }
+#endif
+
+    return count;
+}
+
+void SMTPAlertDispatcher::clearPendingQueue() {
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreTake(m_queueMutex, portMAX_DELAY);
+    }
+#endif
+
+    m_pendingQueue.clear();
+
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_queueMutex != nullptr) {
+        xSemaphoreGive(m_queueMutex);
+    }
+#endif
 }
 
 bool SMTPAlertDispatcher::executeSmtpTransport(const AlertMessage& alert) {
@@ -357,6 +456,9 @@ bool SMTPAlertDispatcher::executeSmtpTransport(const AlertMessage& alert) {
     }
 
 #if defined(ARDUINO) || defined(ESP32)
+#if __has_include(<LittleFS.h>)
+    LittleFS.begin(true);
+#endif
 #if __has_include(<ESP_Mail_Client.h>)
     SMTPSession smtp;
     Session_Config config;
@@ -379,14 +481,26 @@ bool SMTPAlertDispatcher::executeSmtpTransport(const AlertMessage& alert) {
     message.text.content = alert.textBody.c_str();
     message.html.content = alert.htmlBody.c_str();
 
+    Serial.printf("[SMTP] Connecting to %s:%u as %s...\n",
+                  m_config.host.c_str(),
+                  m_config.port,
+                  m_config.senderEmail.c_str());
+
     if (!smtp.connect(&config)) {
+        Serial.printf("[SMTP] Connect failed: %s (code %d)\n",
+                      smtp.errorReason().c_str(),
+                      smtp.statusCode());
         return false;
     }
 
     if (!MailClient.sendMail(&smtp, &message)) {
+        Serial.printf("[SMTP] Send failed: %s (code %d)\n",
+                      smtp.errorReason().c_str(),
+                      smtp.statusCode());
         return false;
     }
 
+    Serial.println("[SMTP] Alert email dispatched successfully to recipients!");
     return true;
 #else
     (void)alert;

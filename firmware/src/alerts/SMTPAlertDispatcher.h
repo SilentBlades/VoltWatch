@@ -15,6 +15,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
+#include <freertos/semphr.h>
 #if __has_include(<ESP_Mail_Client.h>)
 #include <ESP_Mail_Client.h>
 #endif
@@ -127,8 +128,8 @@ public:
 
     // --- Offline Queue Processing & FreeRTOS Worker ---
     bool processNextPendingAlert();
-    size_t getPendingQueueCount() const { return m_pendingQueue.size(); }
-    void clearPendingQueue() { m_pendingQueue.clear(); }
+    size_t getPendingQueueCount() const;
+    void clearPendingQueue();
 
     // --- Clock & NTP Guard Utilities ---
     static bool isNtpSynced(uint32_t epochSeconds);
@@ -154,6 +155,7 @@ private:
     static void smtpTaskWorker(void* pvParameters);
     QueueHandle_t m_freeRtosQueue{nullptr};
     TaskHandle_t m_taskHandle{nullptr};
+    mutable SemaphoreHandle_t m_queueMutex{nullptr};
 #endif
 
     SmtpConfig m_config;

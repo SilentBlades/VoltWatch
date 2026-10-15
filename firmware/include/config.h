@@ -62,7 +62,7 @@ namespace Config {
     };
 
     // --- FreeRTOS SMTP Task & Offline Alert Queue Settings ---
-    constexpr uint32_t SMTP_TASK_STACK_SIZE  = 8192;   // 8KB stack for mbedTLS / SMTP client
+    constexpr uint32_t SMTP_TASK_STACK_SIZE  = 16384;  // 16KB stack for mbedTLS / SMTPS
     constexpr uint8_t  SMTP_TASK_CORE        = 0;      // Pin to Core 0 (leaving Core 1 for real-time loop)
     constexpr uint8_t  SMTP_TASK_PRIORITY    = 1;      // Background priority
     constexpr size_t   SMTP_QUEUE_CAPACITY   = 8;      // Offline FIFO pending alert queue capacity

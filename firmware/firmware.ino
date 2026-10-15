@@ -1,8 +1,13 @@
 #include <Arduino.h>
+#include <ESP_Mail_Client.h>
 
 #if defined(ARDUINO) || defined(ESP32)
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_task_wdt.h>
+#include <WiFi.h>
+#include <time.h>
+#include <LittleFS.h>
 #endif
 
 #if __has_include(<PZEM004Tv30.h>)
@@ -85,9 +90,23 @@ static void syncWebHistory() {
     g_webDashboard.updateHistory(records, count);
 }
 
+// Non-blocking 1 Hz metrology throttling timer
+static uint32_t g_lastMetrologyPoll = 0;
+
 void setup() {
     Serial.begin(VoltWatch::Config::SERIAL_BAUD_RATE);
     delay(500); // Allow power rail and UART to stabilize
+
+#if defined(ARDUINO) && defined(ESP32)
+    // Configure FreeRTOS Task Watchdog Timer to 10,000 ms with panic trigger
+    esp_task_wdt_config_t twdt_config = {
+        .timeout_ms = 10000,
+        .idle_core_mask = 0, // Do NOT monitor idle tasks; only monitor registered tasks
+        .trigger_panic = true
+    };
+    esp_task_wdt_reconfigure(&twdt_config);
+    esp_task_wdt_add(NULL); // Subscribe main loopTask to TWDT
+#endif
 
     Serial.println();
     Serial.println("===============================================================");
@@ -113,6 +132,15 @@ void setup() {
     // 1. Initialize hardware peripherals & indicators
     g_indicator.init();
 
+#if defined(ARDUINO) || defined(ESP32)
+    // 1b. Initialize LittleFS with formatOnFail = true (prevents ESP_Mail_Client mount error -84)
+    if (!LittleFS.begin(true)) {
+        Serial.println("[FS] ⚠️ LittleFS mount failed even after formatting.");
+    } else {
+        Serial.println("[FS] ✅ LittleFS initialized and mounted successfully.");
+    }
+#endif
+
     // 2. Initialize persistent NVS storage (ring-buffer of 10 historical outages)
     g_storage.begin();
     Serial.printf("[NVS] Loaded %zu historical outage records from flash.\n", g_storage.count());
@@ -136,6 +164,7 @@ void setup() {
     Serial.println("[Init] Performing initial metrology acquisition...");
     g_pzem.setSimulationMode(g_simActive, g_simOutage);
     g_pzem.forcePoll();
+    g_lastMetrologyPoll = millis();
     const VoltWatch::GridMetrics& initialGrid = g_pzem.getGridMetrics();
     const VoltWatch::InverterMetrics& initialInv = g_pzem.getInverterMetrics();
 
@@ -220,6 +249,11 @@ static void handleSerialConsole() {
 }
 
 void loop() {
+#if defined(ARDUINO) && defined(ESP32)
+    esp_task_wdt_reset();
+#endif
+    yield();
+
     uint32_t currentMillis = millis();
     uint32_t currentUptimeSec = currentMillis / 1000;
 
@@ -239,25 +273,43 @@ void loop() {
     // -------------------------------------------------------------------------
     g_wifi.update(currentMillis);
 
-    // Defer socket listening until Wi-Fi connects & acquires an IP (prevents Core 3.x tcp_alloc assertion)
+    // When Wi-Fi connects & acquires an IP:
+    // 1. Trigger NTP time sync (UTC+5:30 IST) required for SMTPS TLS certificate validation
+    // 2. Start WebDashboard listening on port 80
+    static bool s_ntpSyncedOnConnect = false;
+#if defined(ARDUINO) && !defined(UNIT_TEST)
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!s_ntpSyncedOnConnect) {
+            s_ntpSyncedOnConnect = true;
+            Serial.printf("[NTP] Wi-Fi connected (IP: %s)! Synchronizing system time for UTC+5:30 (IST)...\n",
+                          WiFi.localIP().toString().c_str());
+            configTime(19800, 0, "pool.ntp.org", "time.google.com"); // UTC+5:30 (IST)
+            g_alertDispatcher.initNtp();
+        }
+        if (!g_webDashboard.isRunning()) {
+            g_webDashboard.startListening();
+        }
+    } else {
+        s_ntpSyncedOnConnect = false;
+    }
+#else
     if (g_wifi.isConnected() && !g_webDashboard.isRunning()) {
         g_webDashboard.startListening();
     }
+#endif
 
     // -------------------------------------------------------------------------
     // Task 2: 1 Hz Metrology Polling & Outage State Evaluation
+    // Strictly throttled to run once every 1000 ms using a non-blocking millis() timer
     // -------------------------------------------------------------------------
-    bool pollTriggered = false;
-    VoltWatch::GridMetrics grid{};
-    VoltWatch::InverterMetrics inverter{};
+    if (currentMillis - g_lastMetrologyPoll >= VoltWatch::Config::METROLOGY_POLL_INTERVAL_MS) {
+        g_lastMetrologyPoll = currentMillis;
 
-    if (g_simActive) {
-        // Bench Simulation: Skip physical UART reads entirely so offline bench testing never blocks on Modbus timeouts
-        static uint32_t lastSimPoll = 0;
-        if (lastSimPoll == 0 || (currentMillis - lastSimPoll >= VoltWatch::Config::METROLOGY_POLL_INTERVAL_MS)) {
-            lastSimPoll = currentMillis;
-            pollTriggered = true;
+        VoltWatch::GridMetrics grid{};
+        VoltWatch::InverterMetrics inverter{};
 
+        if (g_simActive) {
+            // Bench Simulation: Skip physical UART reads entirely so offline bench testing never blocks on Modbus timeouts
             if (g_simOutage) {
                 grid.voltage = 0.0f;
                 grid.frequency = 0.0f;
@@ -278,19 +330,15 @@ void loop() {
             inverter.powerFactor = 0.96f;
             inverter.isValid = true;
             inverter.readErrors = 0;
-        }
-    } else {
-        // Live Hardware: Synchronize outage polling throttling (in an outage, grid polling is throttled to 3s with 0 retries)
-        g_pzem.setOutageMode(g_stateMachine.isOutage());
+        } else {
+            // Live Hardware: Synchronize outage polling throttling (in an outage, grid polling is throttled to 3s with 0 retries)
+            g_pzem.setOutageMode(g_stateMachine.isOutage());
 
-        if (g_pzem.poll(currentMillis)) {
-            pollTriggered = true;
+            g_pzem.poll(currentMillis);
             grid = g_pzem.getGridMetrics();
             inverter = g_pzem.getInverterMetrics();
         }
-    }
 
-    if (pollTriggered) {
         // Update outage state machine
         VoltWatch::OutageState currentState = g_stateMachine.update(grid, inverter, currentUptimeSec);
 
@@ -311,13 +359,15 @@ void loop() {
 
                 // Prepare and queue direct SMTPS Outage Alert (FreeRTOS Core 0 task dispatches asynchronously)
                 VoltWatch::OutageAlertParams alertParams;
-                alertParams.timestampEpoch = currentUptimeSec;
+                time_t nowOutage = time(nullptr);
+                uint32_t outageEpoch = (nowOutage >= 1700000000) ? static_cast<uint32_t>(nowOutage) : currentUptimeSec;
+                alertParams.timestampEpoch = outageEpoch;
                 alertParams.gridVoltageBeforeTrip = g_stateMachine.getGridVoltageBeforeTrip();
                 alertParams.loadWatts = inverter.power;
                 alertParams.currentAmps = inverter.current;
                 alertParams.powerFactor = inverter.powerFactor;
                 alertParams.estBatteryRuntimeMin = g_stateMachine.estimateBatteryRuntimeMinutes(inverter.power);
-                alertParams.isNtpSynced = VoltWatch::SMTPAlertDispatcher::isNtpSynced(currentUptimeSec);
+                alertParams.isNtpSynced = VoltWatch::SMTPAlertDispatcher::isNtpSynced(outageEpoch);
 
                 g_alertDispatcher.sendOutageAlert(alertParams);
                 g_indicator.setAlertLevel(VoltWatch::AlertLevel::CRITICAL_UNDERVOLT);
@@ -335,12 +385,14 @@ void loop() {
 
                 // Prepare and queue direct SMTPS Restoration Alert (flushes queued outage alert first if router was down)
                 VoltWatch::RestorationAlertParams restoreParams;
-                restoreParams.timestampEpoch = currentUptimeSec;
+                time_t nowRestore = time(nullptr);
+                uint32_t restoreEpoch = (nowRestore >= 1700000000) ? static_cast<uint32_t>(nowRestore) : currentUptimeSec;
+                restoreParams.timestampEpoch = restoreEpoch;
                 restoreParams.durationSeconds = lastOutage.durationSeconds;
                 restoreParams.energyConsumedKwh = lastOutage.energyConsumedKwh;
                 restoreParams.restoredGridVoltage = grid.voltage;
                 restoreParams.restoredGridFrequency = grid.frequency;
-                restoreParams.isNtpSynced = VoltWatch::SMTPAlertDispatcher::isNtpSynced(currentUptimeSec);
+                restoreParams.isNtpSynced = VoltWatch::SMTPAlertDispatcher::isNtpSynced(restoreEpoch);
 
                 g_alertDispatcher.sendRestorationAlert(restoreParams);
 

@@ -16,9 +16,15 @@ echo "=================================================="
 
 # Note: VoltWatch operates in headless API mode; static assets are not linked into flash.
 
+LIB_FLAGS=()
+if [ -d "$HOME/Documents/Arduino/libraries" ]; then
+    LIB_FLAGS+=(--libraries "$HOME/Documents/Arduino/libraries")
+fi
+
 arduino-cli compile \
     --fqbn "$FQBN" \
     --build-path "$BUILD_DIR" \
+    "${LIB_FLAGS[@]}" \
     --verbose \
     "$PROJECT_ROOT"
 

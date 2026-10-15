@@ -5,6 +5,7 @@
 #if defined(ESP32)
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_task_wdt.h>
 #endif
 #if __has_include(<PZEM004Tv30.h>)
 #include <PZEM004Tv30.h>
@@ -16,53 +17,115 @@
 
 namespace VoltWatch {
 
-#if defined(ARDUINO) && defined(VOLTWATCH_HAS_PZEM_LIB)
+#if defined(ARDUINO) && defined(ESP32)
 /**
- * @brief Dedicated Dual Hardware UART PZEM Reader on ESP32.
+ * @brief Standard Modbus-RTU CRC16 checksum calculation.
+ */
+static uint16_t pzemCrc16(const uint8_t *data, uint16_t len) {
+    uint16_t crc = 0xFFFF;
+    for (uint16_t i = 0; i < len; ++i) {
+        crc ^= data[i];
+        for (uint8_t j = 0; j < 8; ++j) {
+            if (crc & 0x0001) {
+                crc = (crc >> 1) ^ 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    return crc;
+}
+
+/**
+ * @brief Dedicated Dual Hardware UART PZEM Reader on ESP32 with Fail-Fast Non-Blocking Checks.
  * Serial1 is assigned to Grid PZEM; Serial2 is assigned to Inverter PZEM.
- * This completely isolates the buses and avoids optocoupler clamping and address collisions.
+ * Directly implements Modbus-RTU with a 50 ms non-blocking wait to prevent Core 1 TWDT panics
+ * when sensors are unpowered or AC mains is dead.
  */
 class HardwarePZEMReader : public IPZEMReader {
 public:
     HardwarePZEMReader(uint8_t gridRx, uint8_t gridTx, uint8_t invRx, uint8_t invTx,
                        uint8_t gridAddr, uint8_t invAddr)
         : m_gridRx(gridRx), m_gridTx(gridTx), m_invRx(invRx), m_invTx(invTx),
-          m_gridAddr(gridAddr), m_invAddr(invAddr),
-          m_pzemGrid(Serial1, gridRx, gridTx, gridAddr),
-          m_pzemInv(Serial2, invRx, invTx, invAddr) {}
+          m_gridAddr(gridAddr), m_invAddr(invAddr) {}
 
     void init() {
         Serial1.begin(VoltWatch::Config::PZEM_BAUD_RATE, SERIAL_8N1, m_gridRx, m_gridTx);
-        Serial1.setTimeout(100);
+        Serial1.setTimeout(50);
         Serial2.begin(VoltWatch::Config::PZEM_BAUD_RATE, SERIAL_8N1, m_invRx, m_invTx);
-        Serial2.setTimeout(100);
+        Serial2.setTimeout(50);
     }
 
     bool readRaw(uint8_t addr, PZEMRawReading& reading) override {
-        PZEM004Tv30* pzem = nullptr;
         HardwareSerial* port = nullptr;
         if (addr == m_gridAddr) {
-            pzem = &m_pzemGrid;
             port = &Serial1;
         } else if (addr == m_invAddr) {
-            pzem = &m_pzemInv;
             port = &Serial2;
         } else {
             return false;
         }
 
-        port->setTimeout(100);
-
-        reading.voltage = pzem->voltage();
-        if (std::isnan(reading.voltage)) {
-            return false; // Fast exit on timeout without reading 5 more registers
+        // 1. Flush any stale UART bytes / electrical noise before probing
+        while (port->available() > 0) {
+            port->read();
         }
 
-        reading.current = pzem->current();
-        reading.power = pzem->power();
-        reading.energy = pzem->energy();
-        reading.frequency = pzem->frequency();
-        reading.powerFactor = pzem->pf();
+        // 2. Transmit standard Modbus-RTU command frame (0x04: Read 10 Input Registers from 0x0000)
+        uint8_t req[8] = {addr, 0x04, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x00};
+        uint16_t reqCrc = pzemCrc16(req, 6);
+        req[6] = static_cast<uint8_t>(reqCrc & 0xFF);
+        req[7] = static_cast<uint8_t>((reqCrc >> 8) & 0xFF);
+        port->write(req, 8);
+        port->flush();
+
+        // 3. Fail-fast non-blocking wait: Wait at most 50 ms for bytes to begin arriving
+        uint32_t startWait = millis();
+        while (port->available() < 7 && (millis() - startWait < 50)) {
+            yield();
+        }
+
+        // If 50 ms elapses without bytes in the buffer, immediately abort!
+        // Never block Core 1 waiting on unpowered or disconnected sensors!
+        if (port->available() < 7) {
+            return false;
+        }
+
+        // 4. Non-blocking read of the full 25-byte response frame (at most 50 ms)
+        uint8_t resp[25];
+        uint8_t idx = 0;
+        uint32_t readStart = millis();
+        while (idx < 25 && (millis() - readStart < 50)) {
+            if (port->available() > 0) {
+                resp[idx++] = static_cast<uint8_t>(port->read());
+            } else {
+                yield();
+            }
+        }
+
+        if (idx != 25) {
+            return false;
+        }
+
+        // 5. Verify Modbus response header and CRC16 checksum
+        if (resp[0] != addr || resp[1] != 0x04 || resp[2] != 0x14) {
+            return false;
+        }
+        uint16_t expectedCrc = static_cast<uint16_t>(resp[23]) | (static_cast<uint16_t>(resp[24]) << 8);
+        if (pzemCrc16(resp, 23) != expectedCrc) {
+            return false;
+        }
+
+        // 6. Extract calibrated big-endian registers into reading struct
+        reading.voltage = static_cast<float>((static_cast<uint32_t>(resp[3]) << 8) | static_cast<uint32_t>(resp[4])) / 10.0f;
+        reading.current = static_cast<float>((static_cast<uint32_t>(resp[7]) << 24) | (static_cast<uint32_t>(resp[8]) << 16) |
+                                             (static_cast<uint32_t>(resp[5]) << 8) | static_cast<uint32_t>(resp[6])) / 1000.0f;
+        reading.power = static_cast<float>((static_cast<uint32_t>(resp[11]) << 24) | (static_cast<uint32_t>(resp[12]) << 16) |
+                                           (static_cast<uint32_t>(resp[9]) << 8) | static_cast<uint32_t>(resp[10])) / 10.0f;
+        reading.energy = static_cast<float>((static_cast<uint32_t>(resp[15]) << 24) | (static_cast<uint32_t>(resp[16]) << 16) |
+                                            (static_cast<uint32_t>(resp[13]) << 8) | static_cast<uint32_t>(resp[14])) / 1000.0f;
+        reading.frequency = static_cast<float>((static_cast<uint32_t>(resp[17]) << 8) | static_cast<uint32_t>(resp[18])) / 10.0f;
+        reading.powerFactor = static_cast<float>((static_cast<uint32_t>(resp[19]) << 8) | static_cast<uint32_t>(resp[20])) / 100.0f;
 
         return true;
     }
@@ -74,8 +137,6 @@ private:
     uint8_t m_invTx;
     uint8_t m_gridAddr;
     uint8_t m_invAddr;
-    PZEM004Tv30 m_pzemGrid;
-    PZEM004Tv30 m_pzemInv;
 };
 #endif
 
@@ -225,7 +286,7 @@ PZEMManager::~PZEMManager() {
 }
 
 void PZEMManager::init() {
-#if defined(ARDUINO) && defined(VOLTWATCH_HAS_PZEM_LIB)
+#if defined(ARDUINO) && defined(ESP32)
     if (m_ownsReader && m_reader != nullptr) {
         delete m_reader;
         m_reader = nullptr;
@@ -307,6 +368,12 @@ bool PZEMManager::poll(uint32_t currentMillis) {
     // Inverter output metrology is ALWAYS polled every regular interval
     readInverter();
 
+#if defined(ARDUINO) && defined(ESP32)
+    // Explicit yield and TWDT reset between sensor 1 and sensor 2
+    esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(10));
+#endif
+
     // Outage Polling Throttling: When grid is known to be down, throttle grid reads
     // to prevent timeout latency from starving Inverter telemetry or loop execution
     if (m_inOutageMode) {
@@ -359,6 +426,11 @@ void PZEMManager::forcePoll() {
         return;
     }
     readGrid();
+#if defined(ARDUINO) && defined(ESP32)
+    // Explicit yield and TWDT reset between sensor 1 and sensor 2
+    esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(10));
+#endif
     readInverter();
 }
 
@@ -372,6 +444,7 @@ bool PZEMManager::readGrid() {
 
     for (uint8_t attempt = 0; attempt <= allowedRetries; ++attempt) {
 #if defined(ARDUINO) && defined(ESP32)
+        esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(10)); // Feed FreeRTOS watchdog before every attempt
 #endif
         raw = PZEMRawReading{};
@@ -386,8 +459,8 @@ bool PZEMManager::readGrid() {
 
         retries = attempt;
 #if defined(ARDUINO) && defined(ESP32)
-        // 0 retries on hardware if bytes aren't ready
-        if (!transportOk) {
+        // 0 retries on hardware if bytes aren't ready / sensor unresponsive
+        if (!transportOk || std::isnan(raw.voltage)) {
             break;
         }
 #endif
@@ -430,6 +503,7 @@ bool PZEMManager::readInverter() {
 
     for (uint8_t attempt = 0; attempt <= m_maxRetries; ++attempt) {
 #if defined(ARDUINO) && defined(ESP32)
+        esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(10)); // Feed FreeRTOS watchdog before every attempt
 #endif
         raw = PZEMRawReading{};
@@ -448,8 +522,8 @@ bool PZEMManager::readInverter() {
 
         retries = attempt;
 #if defined(ARDUINO) && defined(ESP32)
-        // 0 retries on hardware if bytes aren't ready
-        if (!transportOk) {
+        // 0 retries on hardware if bytes aren't ready / sensor unresponsive
+        if (!transportOk || std::isnan(raw.voltage)) {
             break;
         }
 #endif
