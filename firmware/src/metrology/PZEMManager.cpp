@@ -2,6 +2,10 @@
 
 #if defined(ARDUINO)
 #include <Arduino.h>
+#if defined(ESP32)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 #if __has_include(<PZEM004Tv30.h>)
 #include <PZEM004Tv30.h>
 #define VOLTWATCH_HAS_PZEM_LIB 1
@@ -29,29 +33,37 @@ public:
 
     void init() {
         Serial1.begin(VoltWatch::Config::PZEM_BAUD_RATE, SERIAL_8N1, m_gridRx, m_gridTx);
+        Serial1.setTimeout(100);
         Serial2.begin(VoltWatch::Config::PZEM_BAUD_RATE, SERIAL_8N1, m_invRx, m_invTx);
+        Serial2.setTimeout(100);
     }
 
     bool readRaw(uint8_t addr, PZEMRawReading& reading) override {
         PZEM004Tv30* pzem = nullptr;
+        HardwareSerial* port = nullptr;
         if (addr == m_gridAddr) {
             pzem = &m_pzemGrid;
+            port = &Serial1;
         } else if (addr == m_invAddr) {
             pzem = &m_pzemInv;
+            port = &Serial2;
         } else {
             return false;
         }
 
+        port->setTimeout(100);
+
         reading.voltage = pzem->voltage();
+        if (std::isnan(reading.voltage)) {
+            return false; // Fast exit on timeout without reading 5 more registers
+        }
+
         reading.current = pzem->current();
         reading.power = pzem->power();
         reading.energy = pzem->energy();
         reading.frequency = pzem->frequency();
         reading.powerFactor = pzem->pf();
 
-        if (std::isnan(reading.voltage)) {
-            return false;
-        }
         return true;
     }
 
@@ -230,7 +242,59 @@ void PZEMManager::init() {
 #endif
 }
 
+#if defined(ARDUINO)
+extern bool g_simActive __attribute__((weak));
+extern bool g_simOutage __attribute__((weak));
+#endif
+
 bool PZEMManager::poll(uint32_t currentMillis) {
+    bool simActive = m_simulationMode;
+#if defined(ARDUINO)
+    if (&g_simActive != nullptr && g_simActive) {
+        simActive = true;
+    }
+#endif
+
+    if (simActive) {
+        if (currentMillis > 0 && m_lastPollTime > 0) {
+            if (currentMillis - m_lastPollTime < m_pollIntervalMs) {
+                return false;
+            }
+        }
+        m_lastPollTime = currentMillis;
+        m_totalPolls++;
+
+        bool outage = m_simOutage;
+#if defined(ARDUINO)
+        if (&g_simOutage != nullptr && g_simOutage) {
+            outage = true;
+        }
+#endif
+
+        if (outage) {
+            m_gridMetrics.voltage = 0.0f;
+            m_gridMetrics.frequency = 0.0f;
+            m_gridMetrics.isValid = true;
+            m_gridMetrics.readErrors = 0;
+        } else {
+            m_gridMetrics.voltage = 231.5f;
+            m_gridMetrics.frequency = 50.0f;
+            m_gridMetrics.isValid = true;
+            m_gridMetrics.readErrors = 0;
+        }
+
+        m_inverterMetrics.voltage = 230.0f;
+        m_inverterMetrics.current = 1.45f;
+        m_inverterMetrics.power = 320.0f;
+        m_inverterMetrics.energy = 1.25f;
+        m_inverterMetrics.frequency = 50.0f;
+        m_inverterMetrics.powerFactor = 0.96f;
+        m_inverterMetrics.isValid = true;
+        m_inverterMetrics.readErrors = 0;
+
+        return true;
+    }
+
     if (currentMillis > 0 && m_lastPollTime > 0) {
         if (currentMillis - m_lastPollTime < m_pollIntervalMs) {
             return false;
@@ -260,6 +324,40 @@ bool PZEMManager::poll(uint32_t currentMillis) {
 
 void PZEMManager::forcePoll() {
     m_totalPolls++;
+    bool simActive = m_simulationMode;
+#if defined(ARDUINO)
+    if (&g_simActive != nullptr && g_simActive) {
+        simActive = true;
+    }
+#endif
+    if (simActive) {
+        bool outage = m_simOutage;
+#if defined(ARDUINO)
+        if (&g_simOutage != nullptr && g_simOutage) {
+            outage = true;
+        }
+#endif
+        if (outage) {
+            m_gridMetrics.voltage = 0.0f;
+            m_gridMetrics.frequency = 0.0f;
+            m_gridMetrics.isValid = true;
+            m_gridMetrics.readErrors = 0;
+        } else {
+            m_gridMetrics.voltage = 231.5f;
+            m_gridMetrics.frequency = 50.0f;
+            m_gridMetrics.isValid = true;
+            m_gridMetrics.readErrors = 0;
+        }
+        m_inverterMetrics.voltage = 230.0f;
+        m_inverterMetrics.current = 1.45f;
+        m_inverterMetrics.power = 320.0f;
+        m_inverterMetrics.energy = 1.25f;
+        m_inverterMetrics.frequency = 50.0f;
+        m_inverterMetrics.powerFactor = 0.96f;
+        m_inverterMetrics.isValid = true;
+        m_inverterMetrics.readErrors = 0;
+        return;
+    }
     readGrid();
     readInverter();
 }
@@ -273,6 +371,9 @@ bool PZEMManager::readGrid() {
     uint8_t allowedRetries = m_inOutageMode ? m_outageMaxRetries : m_maxRetries;
 
     for (uint8_t attempt = 0; attempt <= allowedRetries; ++attempt) {
+#if defined(ARDUINO) && defined(ESP32)
+        vTaskDelay(pdMS_TO_TICKS(10)); // Feed FreeRTOS watchdog before every attempt
+#endif
         raw = PZEMRawReading{};
         bool transportOk = m_reader->readRaw(m_gridAddr, raw);
 
@@ -284,6 +385,12 @@ bool PZEMManager::readGrid() {
         }
 
         retries = attempt;
+#if defined(ARDUINO) && defined(ESP32)
+        // 0 retries on hardware if bytes aren't ready
+        if (!transportOk) {
+            break;
+        }
+#endif
         if (attempt < allowedRetries) {
             logWarning(m_gridAddr, static_cast<uint8_t>(attempt + 1), allowedRetries);
         }
@@ -292,12 +399,19 @@ bool PZEMManager::readGrid() {
     m_lastGridRetries = retries;
 
     if (success) {
+        if (m_gridMetrics.readErrors > 0) {
+#if defined(ARDUINO)
+            Serial.printf("[PZEM 0x%02X] Metrology link restored.\n", m_gridAddr);
+#endif
+        }
         m_gridMetrics.voltage = raw.voltage;
         m_gridMetrics.frequency = raw.frequency;
         m_gridMetrics.isValid = true;
         m_gridMetrics.readErrors = 0;
     } else {
-        logError(m_gridAddr, allowedRetries);
+        if (m_gridMetrics.readErrors == 0) {
+            logError(m_gridAddr, allowedRetries);
+        }
         m_gridMetrics.isValid = false;
         m_gridMetrics.voltage = 0.0f;
         m_gridMetrics.frequency = 0.0f;
@@ -315,6 +429,9 @@ bool PZEMManager::readInverter() {
     uint8_t retries = 0;
 
     for (uint8_t attempt = 0; attempt <= m_maxRetries; ++attempt) {
+#if defined(ARDUINO) && defined(ESP32)
+        vTaskDelay(pdMS_TO_TICKS(10)); // Feed FreeRTOS watchdog before every attempt
+#endif
         raw = PZEMRawReading{};
         bool transportOk = m_reader->readRaw(m_inverterAddr, raw);
 
@@ -330,6 +447,12 @@ bool PZEMManager::readInverter() {
         }
 
         retries = attempt;
+#if defined(ARDUINO) && defined(ESP32)
+        // 0 retries on hardware if bytes aren't ready
+        if (!transportOk) {
+            break;
+        }
+#endif
         if (attempt < m_maxRetries) {
             logWarning(m_inverterAddr, static_cast<uint8_t>(attempt + 1), m_maxRetries);
         }
@@ -338,6 +461,11 @@ bool PZEMManager::readInverter() {
     m_lastInverterRetries = retries;
 
     if (success) {
+        if (m_inverterMetrics.readErrors > 0) {
+#if defined(ARDUINO)
+            Serial.printf("[PZEM 0x%02X] Metrology link restored.\n", m_inverterAddr);
+#endif
+        }
         m_inverterMetrics.voltage = raw.voltage;
         m_inverterMetrics.current = raw.current;
         m_inverterMetrics.power = raw.power;
@@ -347,7 +475,9 @@ bool PZEMManager::readInverter() {
         m_inverterMetrics.isValid = true;
         m_inverterMetrics.readErrors = 0;
     } else {
-        logError(m_inverterAddr, m_maxRetries);
+        if (m_inverterMetrics.readErrors == 0) {
+            logError(m_inverterAddr, m_maxRetries);
+        }
         m_inverterMetrics.isValid = false;
         if (m_inverterMetrics.readErrors < 255) {
             m_inverterMetrics.readErrors++;

@@ -5,14 +5,15 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <mutex>
+#include <atomic>
 #include "../../include/types.h"
 #include "../../include/config.h"
 
 #if defined(ARDUINO) || defined(ESP32)
 #include <WiFi.h>
-#include <ESPAsyncWebServer.h>
+#include <WebServer.h>
 #include <ESPmDNS.h>
-#include <LittleFS.h>
 #endif
 
 namespace VoltWatch {
@@ -66,20 +67,23 @@ public:
     void updateHistory(const OutageRecord* records, size_t count);
 
     /**
-     * @brief Periodic background task (pushes SSE events every SSE_PUSH_INTERVAL_MS)
+     * @brief Periodic client handler tick. Calls server.handleClient().
      * @param currentMillis Current microcontroller uptime in milliseconds
      */
-    void update(uint32_t currentMillis);
+    void update(uint32_t currentMillis = 0);
 
     /**
-     * @brief Immediately broadcast the latest status JSON to all connected SSE clients
+     * @brief Compatibility stub
      */
-    void pushSseUpdate();
+    void pushSseUpdate() {}
 
     /**
-     * @brief Get current cached power system status
+     * @brief Get current cached power system status (thread-safe copy)
      */
-    const PowerSystemStatus& getStatus() const { return m_status; }
+    PowerSystemStatus getStatus() const {
+        std::lock_guard<std::mutex> lock(m_dataMutex);
+        return m_status;
+    }
 
     /**
      * @brief Get pointer to cached outage history records
@@ -87,14 +91,22 @@ public:
     const OutageRecord* getHistory() const { return m_history; }
 
     /**
-     * @brief Get number of cached outage history records
+     * @brief Get number of cached outage history records (thread-safe)
      */
-    size_t getHistoryCount() const { return m_historyCount; }
+    size_t getHistoryCount() const {
+        std::lock_guard<std::mutex> lock(m_dataMutex);
+        return m_historyCount;
+    }
 
     /**
      * @brief Check if web server is running
      */
     bool isRunning() const { return m_running; }
+
+    /**
+     * @brief Check if web server activation is pending execution on the main loop
+     */
+    bool isPendingStart() const { return m_pendingStart.load(); }
 
     /**
      * @brief Check if mDNS responder is active
@@ -174,17 +186,19 @@ public:
 #endif
 
 private:
+    void sendCorsHeaders();
+
+    mutable std::mutex m_dataMutex;
     PowerSystemStatus m_status{};
     OutageRecord m_history[Config::OUTAGE_HISTORY_MAX]{};
     size_t m_historyCount{0};
-    uint32_t m_lastSsePushTime{0};
     bool m_running{false};
     bool m_mdnsActive{false};
+    std::atomic<bool> m_pendingStart{false};
     uint16_t m_port{80};
 
 #if defined(ARDUINO) || defined(ESP32)
-    AsyncWebServer* m_server{nullptr};
-    AsyncEventSource* m_events{nullptr};
+    WebServer* m_server{nullptr};
 #endif
 };
 

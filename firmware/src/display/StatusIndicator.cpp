@@ -21,7 +21,13 @@ void StatusIndicator::init() {
 #ifdef ARDUINO
     pinMode(m_ledPin, OUTPUT);
     pinMode(m_buzzerPin, OUTPUT);
-    digitalWrite(m_ledPin, LOW);
+    // Visual power-on self test: 3 quick blinks to verify onboard LED hardware
+    for (uint8_t i = 0; i < 3; ++i) {
+        digitalWrite(m_ledPin, HIGH);
+        delay(80);
+        digitalWrite(m_ledPin, LOW);
+        delay(80);
+    }
     digitalWrite(m_buzzerPin, LOW);
 #endif
 }
@@ -56,19 +62,17 @@ void StatusIndicator::writePins(bool ledState, bool buzzerState) {
 void StatusIndicator::update(uint32_t currentMillis) {
     switch (m_currentLevel) {
         case AlertLevel::NORMAL:
-            // Heartbeat blink: 50ms pulse every 2000ms
-            if (currentMillis - m_lastToggleTime >= 2000) {
+            // Rhythmic heartbeat: 500ms ON / 500ms OFF (1 Hz toggle)
+            if (currentMillis - m_lastToggleTime >= 500) {
                 m_lastToggleTime = currentMillis;
-                writePins(true, false);
-            } else if (currentMillis - m_lastToggleTime >= 50 && m_ledState) {
-                writePins(false, false);
+                writePins(!m_ledState, false);
             }
             break;
 
         case AlertLevel::WARNING_LOW:
         case AlertLevel::WARNING_HIGH:
-            // Warning: steady 500ms ON / 500ms OFF toggle, no buzzer
-            if (currentMillis - m_lastToggleTime >= 500) {
+            // Warning: steady 250ms ON / 250ms OFF toggle, no buzzer
+            if (currentMillis - m_lastToggleTime >= 250) {
                 m_lastToggleTime = currentMillis;
                 writePins(!m_ledState, false);
             }

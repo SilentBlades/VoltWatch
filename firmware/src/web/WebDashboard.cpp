@@ -13,9 +13,9 @@ WebDashboard::WebDashboard() {
     // Zero-initialize status and history
     m_status = {};
     m_historyCount = 0;
-    m_lastSsePushTime = 0;
     m_running = false;
     m_mdnsActive = false;
+    m_pendingStart = false;
     m_port = 80;
 }
 
@@ -23,84 +23,109 @@ WebDashboard::~WebDashboard() {
     stop();
 }
 
+void WebDashboard::sendCorsHeaders() {
+#if defined(ARDUINO) || defined(ESP32)
+    if (m_server) {
+        m_server->sendHeader("Access-Control-Allow-Origin", "*");
+        m_server->sendHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        m_server->sendHeader("Access-Control-Allow-Headers", "*");
+        m_server->sendHeader("Access-Control-Allow-Private-Network", "true");
+    }
+#endif
+}
+
 bool WebDashboard::begin(uint16_t port) {
     m_port = port;
 
 #if defined(ARDUINO) || defined(ESP32)
-    stop(); // Ensure any prior server instance is torn down
+    stop(); // Ensure any prior server instance is torn down cleanly
 
-    // Global CORS headers for Headless Metrology / SPA model & Chrome PNA
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type, Access-Control-Request-Private-Network");
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Private-Network", "true");
-
-    m_server = new AsyncWebServer(m_port);
-    m_events = new AsyncEventSource("/api/events");
-
-    // Server-Sent Events setup
-    m_events->onConnect([](AsyncEventSourceClient *client) {
-        if (client->lastId()) {
-            Serial.printf("[WebDashboard] SSE client reconnected. Last ID: %u\n", client->lastId());
-        }
-        client->send("{\"type\":\"connected\"}", "connect", millis(), 10000);
-    });
-    m_server->addHandler(m_events);
+    m_server = new WebServer(m_port);
 
     // Route: Diagnostic JSON payload for "/" and "/index.html"
-    auto sendDiagnosticResponse = [](AsyncWebServerRequest *request) {
-        request->send(200, "application/json", "{\"service\":\"VoltWatch\",\"status\":\"online\",\"api\":[\"/api/status\",\"/api/history\",\"/api/events\"]}");
+    auto sendDiagnosticResponse = [this]() {
+        this->sendCorsHeaders();
+        this->m_server->send(200, "application/json", "{\"service\":\"VoltWatch\",\"status\":\"online\",\"api\":[\"/api/status\",\"/api/history\"]}");
     };
 
     m_server->on("/", HTTP_GET, sendDiagnosticResponse);
     m_server->on("/index.html", HTTP_GET, sendDiagnosticResponse);
 
-    // Route: Direct REST JSON Endpoint GET /api/status
-    m_server->on("/api/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        std::string json = buildStatusJson(m_status);
-        request->send(200, "application/json", json.c_str());
+    // Route: Direct REST JSON Endpoint GET /api/status (Thread-safe status snapshot)
+    m_server->on("/api/status", HTTP_GET, [this]() {
+        this->sendCorsHeaders();
+        std::string json;
+        {
+            std::lock_guard<std::mutex> lock(this->m_dataMutex);
+            json = buildStatusJson(this->m_status);
+        }
+        this->m_server->send(200, "application/json", json.c_str());
     });
 
-    // Route: REST JSON Endpoint GET /api/history
-    m_server->on("/api/history", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        std::string json = buildHistoryJson(m_history, m_historyCount);
-        request->send(200, "application/json", json.c_str());
+    // Route: REST JSON Endpoint GET /api/history (Thread-safe history snapshot)
+    m_server->on("/api/history", HTTP_GET, [this]() {
+        this->sendCorsHeaders();
+        std::string json;
+        {
+            std::lock_guard<std::mutex> lock(this->m_dataMutex);
+            json = buildHistoryJson(this->m_history, this->m_historyCount);
+        }
+        this->m_server->send(200, "application/json", json.c_str());
     });
+
+    // OPTIONS preflight handlers
+    auto handleOptions = [this]() {
+        this->sendCorsHeaders();
+        this->m_server->send(204);
+    };
+    m_server->on("/api/status", HTTP_OPTIONS, handleOptions);
+    m_server->on("/api/history", HTTP_OPTIONS, handleOptions);
+    m_server->on("/", HTTP_OPTIONS, handleOptions);
+    m_server->on("/index.html", HTTP_OPTIONS, handleOptions);
 
     // Handle HTTP OPTIONS preflight requests globally and catch-all 404
-    m_server->onNotFound([](AsyncWebServerRequest *request) {
-        if (request->method() == HTTP_OPTIONS) {
-            AsyncWebServerResponse *response = request->beginResponse(204);
-            response->addHeader("Access-Control-Allow-Origin", "*");
-            response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-            response->addHeader("Access-Control-Allow-Headers", "Content-Type, Access-Control-Request-Private-Network");
-            response->addHeader("Access-Control-Allow-Private-Network", "true");
-            request->send(response);
+    m_server->onNotFound([this]() {
+        this->sendCorsHeaders();
+        if (this->m_server->method() == HTTP_OPTIONS) {
+            this->m_server->send(204);
         } else {
-            request->send(404);
+            this->m_server->send(404, "application/json", "{\"error\":\"Not Found\"}");
         }
     });
 
-    // Defer socket creation until Wi-Fi allocates an IP to avoid tcp_alloc assertion in ESP32 Core 3.x
 #if defined(ARDUINO_EVENT_WIFI_STA_GOT_IP)
     WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
         (void)event;
         (void)info;
-        Serial.printf("[WebDashboard] Wi-Fi STA Got IP: %s. Activating WebServer...\n",
+        Serial.printf("[WebDashboard] Wi-Fi STA Got IP: %s. Scheduling WebServer activation on main loop...\n",
                       WiFi.localIP().toString().c_str());
-        this->startListening();
+        this->m_pendingStart = true;
     }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
 #elif defined(SYSTEM_EVENT_STA_GOT_IP)
     WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
         (void)event;
         (void)info;
-        this->startListening();
+        this->m_pendingStart = true;
     }, SYSTEM_EVENT_STA_GOT_IP);
 #endif
 
-    // If WiFi happens to already be connected, start listening immediately
-    if (WiFi.status() == WL_CONNECTED) {
-        startListening();
+#if defined(ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
+    WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
+        (void)event;
+        (void)info;
+        this->m_pendingStart = false;
+    }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+#elif defined(SYSTEM_EVENT_STA_DISCONNECTED)
+    WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
+        (void)event;
+        (void)info;
+        this->m_pendingStart = false;
+    }, SYSTEM_EVENT_STA_DISCONNECTED);
+#endif
+
+    // If WiFi is already connected during initialization, schedule start on main loop
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != INADDR_NONE) {
+        m_pendingStart = true;
     }
 #else
     // Simulated / native environment
@@ -120,7 +145,13 @@ bool WebDashboard::startListening() {
         return false;
     }
 
+    // Verify Wi-Fi is fully connected with a valid IP before calling m_server->begin()
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == INADDR_NONE) {
+        return false;
+    }
+
     m_server->begin();
+
     m_running = true;
 
     // Initialize mDNS responder for http://voltwatch.local
@@ -144,24 +175,23 @@ bool WebDashboard::startListening() {
 void WebDashboard::stop() {
 #if defined(ARDUINO) || defined(ESP32)
     if (m_server) {
-        m_server->end();
+        m_server->stop();
         delete m_server;
         m_server = nullptr;
-    }
-    if (m_events) {
-        delete m_events;
-        m_events = nullptr;
     }
 #endif
     m_running = false;
     m_mdnsActive = false;
+    m_pendingStart = false;
 }
 
 void WebDashboard::updateStatus(const PowerSystemStatus& status) {
+    std::lock_guard<std::mutex> lock(m_dataMutex);
     m_status = status;
 }
 
 void WebDashboard::updateHistory(const OutageRecord* records, size_t count) {
+    std::lock_guard<std::mutex> lock(m_dataMutex);
     if (!records || count == 0) {
         m_historyCount = 0;
         return;
@@ -174,25 +204,16 @@ void WebDashboard::updateHistory(const OutageRecord* records, size_t count) {
 }
 
 void WebDashboard::update(uint32_t currentMillis) {
+    (void)currentMillis;
 #if defined(ARDUINO) || defined(ESP32)
-    if (!m_running && WiFi.status() == WL_CONNECTED) {
+    // Synchronously activate web server on the main loop task once Wi-Fi has allocated an IP
+    if (!m_running && (m_pendingStart.load() || (WiFi.status() == WL_CONNECTED && WiFi.localIP() != INADDR_NONE))) {
+        m_pendingStart = false;
         startListening();
     }
-#endif
 
-    if (!m_running) return;
-
-    if (currentMillis - m_lastSsePushTime >= Config::SSE_PUSH_INTERVAL_MS) {
-        m_lastSsePushTime = currentMillis;
-        pushSseUpdate();
-    }
-}
-
-void WebDashboard::pushSseUpdate() {
-#if defined(ARDUINO) || defined(ESP32)
-    if (m_events && m_events->count() > 0) {
-        std::string json = buildStatusJson(m_status);
-        m_events->send(json.c_str(), "status", millis());
+    if (m_running && m_server) {
+        m_server->handleClient();
     }
 #endif
 }

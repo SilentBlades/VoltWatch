@@ -1,5 +1,14 @@
 #include <Arduino.h>
 
+#if defined(ARDUINO) || defined(ESP32)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
+
+#if __has_include(<PZEM004Tv30.h>)
+#include <PZEM004Tv30.h>
+#endif
+
 #include "include/config.h"
 #include "include/pins.h"
 #include "include/types.h"
@@ -62,8 +71,9 @@ static VoltWatch::StatusIndicator g_indicator(
 );
 
 // Interactive Bench Simulation Flags (allows testing full outage lifecycle via Serial Monitor)
-static bool g_simActive = false;
-static bool g_simOutage = false;
+// Default to false on boot: boots directly into live physical PZEM hardware acquisition mode
+bool g_simActive = false;
+bool g_simOutage = false;
 
 // Sync local NVS records into web dashboard cache helper
 static void syncWebHistory() {
@@ -111,6 +121,7 @@ void setup() {
     g_pzem.init();
 
     // 4. Initialize asynchronous Wi-Fi manager (non-blocking)
+    Serial.printf("[WiFi] Starting non-blocking connection to SSID: '%s'...\n", WIFI_SSID);
     g_wifi.init(WIFI_SSID, WIFI_PASSWORD);
 
     // 5. Initialize SMTPS alerting engine, FreeRTOS Core 0 worker task, and NTP synchronization
@@ -123,6 +134,7 @@ void setup() {
 
     // 7. Initial metrology reading to bootstrap state machine
     Serial.println("[Init] Performing initial metrology acquisition...");
+    g_pzem.setSimulationMode(g_simActive, g_simOutage);
     g_pzem.forcePoll();
     const VoltWatch::GridMetrics& initialGrid = g_pzem.getGridMetrics();
     const VoltWatch::InverterMetrics& initialInv = g_pzem.getInverterMetrics();
@@ -143,51 +155,87 @@ void setup() {
     }
 
     Serial.println("VoltWatch operational. Starting real-time metrology loop...");
-    Serial.println("[Tip] Bench simulation: Type 'outage' in Serial Monitor to simulate blackout.");
-    Serial.println("[Tip] Type 'restore' to simulate restoration. Type 'help' for console commands.\n");
+    if (g_simActive) {
+        Serial.println("[Mode] 🧪 Bench Simulation Mode active (physical PZEM UART reads disabled).");
+        Serial.println("[Tip] Type 'hardware' or 'live' in Serial Monitor to enable physical PZEM sensors.");
+        Serial.println("[Tip] Type 'outage' to simulate blackout. Type 'help' for console commands.\n");
+    } else {
+        Serial.println("[Mode] ⚡ Live Hardware Acquisition active (Dual PZEM-004T v3.0 UARTs).");
+        Serial.println("[Tip] Type 'sim' or 'outage' in Serial Monitor for interactive bench testing.\n");
+    }
+}
+
+static String g_serialCmdBuffer = "";
+
+static void handleSerialConsole() {
+    int maxBytes = 32; // Limit processing to 32 bytes per tick to prevent starvation under heavy stream
+    while (Serial.available() > 0 && maxBytes-- > 0) {
+        char c = static_cast<char>(Serial.read());
+        if (c == '\r' || c == '\n') {
+            g_serialCmdBuffer.trim();
+            if (g_serialCmdBuffer.length() > 0) {
+                String cmd = g_serialCmdBuffer;
+                cmd.toLowerCase();
+                g_serialCmdBuffer = "";
+
+                if (cmd == "outage" || cmd == "trip") {
+                    g_simActive = true;
+                    g_simOutage = true;
+                    Serial.println("\n[Sim] ⚡ Simulation: GRID OUTAGE triggered! (Grid V forced to 0.0V)");
+                    Serial.println("[Sim] Debouncing 3 cycles (3000ms)... Alert will dispatch to FreeRTOS SMTP worker.");
+                } else if (cmd == "restore" || cmd == "recover") {
+                    g_simActive = true;
+                    g_simOutage = false;
+                    Serial.println("\n[Sim] ⚡ Simulation: GRID RESTORED! (Grid V forced to 231.5V)");
+                    Serial.println("[Sim] Debouncing 3 cycles (3000ms)... Restoration alert will dispatch.");
+                } else if (cmd == "sim") {
+                    g_simActive = true;
+                    Serial.println("\n[Sim] Bench simulation mode enabled. Physical UART reads bypassed.");
+                } else if (cmd == "live" || cmd == "normal" || cmd == "hardware") {
+                    g_simActive = false;
+                    Serial.println("\n[Sim] Simulation disabled. Resuming live PZEM hardware reads.");
+                } else if (cmd == "status") {
+                    Serial.printf("[Status] Wi-Fi: %s | State: %s | Mode: %s\n",
+                                  g_wifi.isConnected() ? "CONNECTED" : "CONNECTING/DISCONNECTED",
+                                  VoltWatch::outageStateToString(g_stateMachine.getState()),
+                                  g_simActive ? (g_simOutage ? "SIM_OUTAGE (0V)" : "SIM_RESTORE (231.5V)") : "LIVE_PZEM");
+                } else if (cmd == "help") {
+                    Serial.println("\n--- VoltWatch Bench Simulation Console ---");
+                    Serial.println("  sim               - Enable bench simulation mode (bypasses physical UART reads)");
+                    Serial.println("  outage / trip     - Drop grid voltage to 0V (Simulates blackout -> triggers email alert)");
+                    Serial.println("  restore / recover - Restore grid voltage to 231.5V (Simulates recovery -> triggers email)");
+                    Serial.println("  hardware / live   - Resume reading physical PZEM hardware sensors");
+                    Serial.println("  status            - Print live network, power state, and simulation status");
+                    Serial.println("------------------------------------------\n");
+                } else {
+                    Serial.printf("\n[Console] Unknown command: '%s'. Type 'help' for available commands.\n", cmd.c_str());
+                }
+            }
+        } else if (c >= 32 && c <= 126) {
+            if (g_serialCmdBuffer.length() < 64) {
+                g_serialCmdBuffer += c;
+            }
+        }
+    }
 }
 
 void loop() {
     uint32_t currentMillis = millis();
     uint32_t currentUptimeSec = currentMillis / 1000;
 
-    // -------------------------------------------------------------------------
-    // Task 0: Interactive Serial Simulation Console (Bench Testing without 230V)
-    // -------------------------------------------------------------------------
-    if (Serial.available()) {
-        String cmd = Serial.readStringUntil('\n');
-        cmd.trim();
-        cmd.toLowerCase();
-        if (cmd == "outage" || cmd == "trip") {
-            g_simActive = true;
-            g_simOutage = true;
-            Serial.println("\n[Sim] ⚡ Simulation: GRID OUTAGE triggered! (Grid V forced to 0.0V)");
-            Serial.println("[Sim] Debouncing 3 cycles (3000ms)... Alert will dispatch to FreeRTOS SMTP worker.");
-        } else if (cmd == "restore" || cmd == "recover") {
-            g_simActive = true;
-            g_simOutage = false;
-            Serial.println("\n[Sim] ⚡ Simulation: GRID RESTORED! (Grid V forced to 231.5V)");
-            Serial.println("[Sim] Debouncing 3 cycles (3000ms)... Restoration alert will dispatch.");
-        } else if (cmd == "live" || cmd == "normal") {
-            g_simActive = false;
-            Serial.println("\n[Sim] Simulation disabled. Resuming live PZEM hardware reads.");
-        } else if (cmd == "status") {
-            Serial.printf("[Status] Wi-Fi: %s | State: %s | Mode: %s\n",
-                          g_wifi.isConnected() ? "CONNECTED" : "CONNECTING/DISCONNECTED",
-                          VoltWatch::outageStateToString(g_stateMachine.getState()),
-                          g_simActive ? (g_simOutage ? "SIM_OUTAGE (0V)" : "SIM_RESTORE (231.5V)") : "LIVE_PZEM");
-        } else if (cmd == "help") {
-            Serial.println("\n--- VoltWatch Bench Simulation Console ---");
-            Serial.println("  outage  - Drop grid voltage to 0V (Simulates blackout -> triggers email alert)");
-            Serial.println("  restore - Restore grid voltage to 231.5V (Simulates recovery -> triggers email)");
-            Serial.println("  live    - Resume reading physical PZEM hardware sensors");
-            Serial.println("  status  - Print live network, power state, and simulation status");
-            Serial.println("------------------------------------------\n");
-        }
-    }
 
     // -------------------------------------------------------------------------
-    // Task 1: Non-Blocking Asynchronous Wi-Fi State Machine Tick
+    // Task 0: Status Indicator Cadence Tick (Executed FIRST so LED blinks reliably)
+    // -------------------------------------------------------------------------
+    g_indicator.update(currentMillis);
+
+    // -------------------------------------------------------------------------
+    // Task 1: Interactive Serial Simulation Console (Executed FIRST for instant response)
+    // -------------------------------------------------------------------------
+    handleSerialConsole();
+
+    // -------------------------------------------------------------------------
+    // Task 2: Non-Blocking Asynchronous Wi-Fi State Machine Tick
     // -------------------------------------------------------------------------
     g_wifi.update(currentMillis);
 
@@ -199,33 +247,50 @@ void loop() {
     // -------------------------------------------------------------------------
     // Task 2: 1 Hz Metrology Polling & Outage State Evaluation
     // -------------------------------------------------------------------------
-    // Synchronize outage polling throttling: in an outage, grid polling is throttled to 3s with 0 retries
-    g_pzem.setOutageMode(g_stateMachine.isOutage());
+    bool pollTriggered = false;
+    VoltWatch::GridMetrics grid{};
+    VoltWatch::InverterMetrics inverter{};
 
-    if (g_pzem.poll(currentMillis)) {
-        VoltWatch::GridMetrics grid = g_pzem.getGridMetrics();
-        VoltWatch::InverterMetrics inverter = g_pzem.getInverterMetrics();
+    if (g_simActive) {
+        // Bench Simulation: Skip physical UART reads entirely so offline bench testing never blocks on Modbus timeouts
+        static uint32_t lastSimPoll = 0;
+        if (lastSimPoll == 0 || (currentMillis - lastSimPoll >= VoltWatch::Config::METROLOGY_POLL_INTERVAL_MS)) {
+            lastSimPoll = currentMillis;
+            pollTriggered = true;
 
-        // Inject simulated values if bench simulation is active
-        if (g_simActive) {
             if (g_simOutage) {
                 grid.voltage = 0.0f;
                 grid.frequency = 0.0f;
                 grid.isValid = true;
+                grid.readErrors = 0;
             } else {
                 grid.voltage = 231.5f;
                 grid.frequency = 50.0f;
                 grid.isValid = true;
+                grid.readErrors = 0;
             }
-            if (inverter.power <= 0.0f) {
-                inverter.voltage = 230.0f;
-                inverter.power = 320.0f; // 320W typical load
-                inverter.current = 1.45f;
-                inverter.powerFactor = 0.96f;
-                inverter.isValid = true;
-            }
-        }
 
+            inverter.voltage = 230.0f;
+            inverter.current = 1.45f;
+            inverter.power = 320.0f; // 320W typical load
+            inverter.energy = 1.25f;
+            inverter.frequency = 50.0f;
+            inverter.powerFactor = 0.96f;
+            inverter.isValid = true;
+            inverter.readErrors = 0;
+        }
+    } else {
+        // Live Hardware: Synchronize outage polling throttling (in an outage, grid polling is throttled to 3s with 0 retries)
+        g_pzem.setOutageMode(g_stateMachine.isOutage());
+
+        if (g_pzem.poll(currentMillis)) {
+            pollTriggered = true;
+            grid = g_pzem.getGridMetrics();
+            inverter = g_pzem.getInverterMetrics();
+        }
+    }
+
+    if (pollTriggered) {
         // Update outage state machine
         VoltWatch::OutageState currentState = g_stateMachine.update(grid, inverter, currentUptimeSec);
 
@@ -303,12 +368,17 @@ void loop() {
     }
 
     // -------------------------------------------------------------------------
-    // Task 3: Real-Time SSE Stream Update (1 Hz to connected browser clients)
+    // Task 3: Web Server Client Request Handling (Non-blocking handleClient)
     // -------------------------------------------------------------------------
-    g_webDashboard.update(currentMillis);
+    if (g_webDashboard.isRunning()) {
+        g_webDashboard.update(currentMillis);
+    }
 
     // -------------------------------------------------------------------------
-    // Task 4: Status Indicator Cadence Tick (Non-blocking LED / Buzzer)
+    // Task 4: FreeRTOS Task Yield (Unconditional 50ms yield on every pass)
+    // Prevents IDLE task starvation, feeds Task Watchdog Timer (TWDT), and avoids panic
     // -------------------------------------------------------------------------
-    g_indicator.update(currentMillis);
+#if defined(ARDUINO) || defined(ESP32)
+    vTaskDelay(pdMS_TO_TICKS(50));
+#endif
 }

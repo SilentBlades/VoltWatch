@@ -23,7 +23,13 @@ namespace Pins {
     constexpr uint8_t PZEM_TX2_PIN     = PZEM_INV_TX_PIN;
 
     // --- Status and Indicator Peripherals ---
-    constexpr uint8_t STATUS_LED_PIN   = 2;   // Onboard status LED
+    #ifndef STATUS_LED_PIN
+    #ifdef LED_BUILTIN
+    constexpr uint8_t STATUS_LED_PIN   = LED_BUILTIN; // Uses board-specific LED_BUILTIN if defined
+    #else
+    constexpr uint8_t STATUS_LED_PIN   = 2;   // GPIO 2 (Onboard blue LED for 30-pin boards; for 38-pin clones connect external LED)
+    #endif
+    #endif
     constexpr uint8_t ALERT_BUZZER_PIN = 25;  // GPIO 25 (Audible alarm / Buzzer trigger)
 
     // --- Analog ADC Pin (Legacy DC monitoring / auxiliary sensing) ---

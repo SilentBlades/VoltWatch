@@ -203,9 +203,20 @@ public:
     void setMockGridFailures(uint8_t count, bool returnNan = false);
     void setMockInverterFailures(uint8_t count, bool returnNan = false);
 
+    // Simulation controls (bypasses physical UART reads entirely)
+    void setSimulationMode(bool enabled, bool outage = false) {
+        m_simulationMode = enabled;
+        m_simOutage = outage;
+    }
+    bool isSimulationMode() const { return m_simulationMode; }
+    void setSimulationOutage(bool outage) { m_simOutage = outage; }
+    bool isSimulationOutage() const { return m_simOutage; }
+
     void reset();
 
 private:
+    bool m_simulationMode{false};
+    bool m_simOutage{false};
     void logWarning(uint8_t addr, uint8_t attempt, uint8_t maxRetries);
     void logError(uint8_t addr, uint8_t maxRetries);
 

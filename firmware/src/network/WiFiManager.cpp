@@ -43,6 +43,7 @@ void WiFiManager::startConnecting(uint32_t currentMillis) {
 
 #if defined(ARDUINO) && !defined(UNIT_TEST)
     if (!m_mockMode) {
+        Serial.printf("[WiFi] Connecting to SSID: '%s'...\n", m_ssid.c_str());
         WiFi.begin(m_ssid.c_str(), m_password.c_str());
     }
 #endif
@@ -66,7 +67,9 @@ void WiFiManager::update(uint32_t currentMillis) {
                     m_rssi = WiFi.RSSI();
                     m_lastStateChangeMs = currentMillis;
                     m_lastRssiCheckMs = currentMillis;
+                    Serial.printf("[WiFi] Connected! IP: %s | RSSI: %d dBm\n", m_ipAddress.c_str(), m_rssi);
                 } else if (currentMillis - m_lastStateChangeMs >= m_connectTimeoutMs) {
+                    Serial.println("[WiFi] Connection attempt timed out. Waiting before retry...");
                     WiFi.disconnect(true);
                     m_reconnectAttempts++;
                     m_currentBackoffMs = std::min(m_currentBackoffMs * 2, m_maxBackoffMs);
@@ -98,6 +101,7 @@ void WiFiManager::update(uint32_t currentMillis) {
 #if defined(ARDUINO) && !defined(UNIT_TEST)
             if (!m_mockMode) {
                 if (WiFi.status() != WL_CONNECTED) {
+                    Serial.println("[WiFi] Lost connection. Reconnecting with exponential backoff...");
                     WiFi.disconnect(true);
                     m_reconnectAttempts++;
                     m_currentBackoffMs = m_minBackoffMs;
