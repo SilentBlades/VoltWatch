@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VoltWatch | Edge Power Metrology & Sentinel</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
   <style>
     :root {
       --bg: #0b0f19;
@@ -36,7 +37,6 @@
 
     .container { max-width: 1200px; margin: 0 auto; }
 
-    /* Top Navigation / Header */
     header {
       display: flex;
       flex-wrap: wrap;
@@ -94,6 +94,7 @@
       padding: 0.35rem 0.75rem;
       border-radius: 20px;
       border: 1px solid var(--card-border);
+      user-select: none;
     }
 
     .conn-dot {
@@ -127,13 +128,9 @@
       transform: rotate(30deg);
     }
 
-    /* Modal Backdrop & Dialog */
     .modal-backdrop {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(4px);
       display: flex;
@@ -177,12 +174,8 @@
       padding: 0 4px;
       border-radius: 4px;
     }
-    .modal-close:hover {
-      color: var(--text-main);
-    }
-    .modal-body {
-      padding: 1.25rem;
-    }
+    .modal-close:hover { color: var(--text-main); }
+    .modal-body { padding: 1.25rem; }
     .modal-desc {
       font-size: 0.825rem;
       color: var(--text-sub);
@@ -326,11 +319,8 @@
       font-weight: 700;
       transition: opacity 0.2s;
     }
-    .btn-primary:hover {
-      opacity: 0.9;
-    }
+    .btn-primary:hover { opacity: 0.9; }
 
-    /* Live Status Pill */
     .status-pill {
       display: inline-flex;
       align-items: center;
@@ -371,7 +361,6 @@
       100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
     }
 
-    /* Hero / Battery Estimator Card */
     .hero-card {
       background: linear-gradient(135deg, #131d31 0%, #17243e 100%);
       border: 1px solid var(--card-border);
@@ -448,7 +437,6 @@
       color: var(--text-muted);
     }
 
-    /* Section Headings */
     .section-title {
       font-size: 1.1rem;
       font-weight: 600;
@@ -459,7 +447,6 @@
       gap: 0.5rem;
     }
 
-    /* Grid layout for Metric Cards */
     .metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -524,7 +511,6 @@
       font-weight: 500;
     }
 
-    /* Gauge / Progress Mini Bar */
     .gauge-bar-bg {
       height: 6px;
       background: rgba(255, 255, 255, 0.08);
@@ -546,7 +532,6 @@
       justify-content: space-between;
     }
 
-    /* History Table Section */
     .history-section {
       background-color: var(--card-bg);
       border: 1px solid var(--card-border);
@@ -585,9 +570,7 @@
       color: var(--text-main);
     }
 
-    .table-container {
-      overflow-x: auto;
-    }
+    .table-container { overflow-x: auto; }
 
     table {
       width: 100%;
@@ -616,24 +599,6 @@
       background-color: rgba(255, 255, 255, 0.02);
     }
 
-    .status-badge {
-      display: inline-block;
-      padding: 0.2rem 0.6rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    .status-badge.recovered {
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--green);
-    }
-
-    .status-badge.ongoing {
-      background: rgba(244, 63, 94, 0.15);
-      color: var(--red);
-    }
-
     .empty-state {
       text-align: center;
       padding: 2.5rem 1rem;
@@ -642,7 +607,6 @@
       font-size: 0.9rem;
     }
 
-    /* Footer */
     footer {
       text-align: center;
       padding-top: 1rem;
@@ -673,726 +637,688 @@
   </style>
 </head>
 <body>
-  <div class="container">
-    <!-- Header -->
-    <header>
-      <div class="brand">
-        <div class="brand-icon">⚡</div>
+<div class="container">
+  <header>
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <h1>VoltWatch</h1>
+        <p>Edge Metrology & Outage Sentinel</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="conn-badge" id="badge-connection" style="cursor: pointer;" title="Target Device Status (Click to edit)">
+        <span id="conn-dot" class="conn-dot"></span>
+        <span id="conn-text">Connecting...</span>
+        <button id="btn-open-settings" class="gear-btn" title="Configure Target Device" aria-label="Settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="conn-badge">
+        <span>Uptime:</span>
+        <strong id="val-uptime">--</strong>
+      </div>
+      <div id="status-pill" class="status-pill online">
+        <span class="pulse-dot"></span>
+        <span id="status-pill-text">GRID ONLINE</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="hero-card">
+    <div class="battery-info">
+      <div class="battery-label">Inverter Battery Backup Estimator</div>
+      <div id="battery-runtime-val" class="battery-time">--h --m</div>
+      <div id="battery-runtime-sub" class="battery-sub">Awaiting instantaneous telemetry...</div>
+    </div>
+    <div class="battery-visual">
+      <div class="battery-bar-container">
+        <div id="battery-bar" class="battery-bar-fill" style="width: 100%;"></div>
+      </div>
+      <div class="battery-meta">
+        <span>0 min</span>
+        <span id="battery-pct-label">Estimated Autonomy</span>
+        <span>Max Safe DoD (80%)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">
+    <span>Live AC Metrology</span>
+  </div>
+
+  <div class="metrics-grid">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Grid Mains Voltage</span>
+        <span class="card-badge">PZEM #1</span>
+      </div>
+      <div class="card-body">
+        <span id="val-grid-v" class="metric-value">--.-</span>
+        <span class="metric-unit">V</span>
+      </div>
+      <div class="gauge-bar-bg">
+        <div id="bar-grid-v" class="gauge-bar-val" style="width: 0%; background-color: var(--green);"></div>
+      </div>
+      <div class="card-subtext">
+        <span>Nominal: 230V</span>
+        <span id="stat-grid-v">Online Range</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Grid Frequency</span>
+        <span class="card-badge">50 Hz Base</span>
+      </div>
+      <div class="card-body">
+        <span id="val-grid-f" class="metric-value">--.-</span>
+        <span class="metric-unit">Hz</span>
+      </div>
+      <div class="gauge-bar-bg">
+        <div id="bar-grid-f" class="gauge-bar-val" style="width: 50%; background-color: var(--cyan);"></div>
+      </div>
+      <div class="card-subtext">
+        <span>Target: 50.0 Hz</span>
+        <span>±1.0 Hz Tolerance</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Inverter Active Load</span>
+        <span class="card-badge">PZEM #2</span>
+      </div>
+      <div class="card-body">
+        <span id="val-inv-w" class="metric-value">--.-</span>
+        <span class="metric-unit">W</span>
+      </div>
+      <div class="gauge-bar-bg">
+        <div id="bar-inv-w" class="gauge-bar-val" style="width: 0%; background-color: var(--amber);"></div>
+      </div>
+      <div class="card-subtext">
+        <span>Instantaneous Load</span>
+        <span id="stat-inv-w">Capacity: 2000W</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Inverter Load Current</span>
+        <span class="card-badge">AC True RMS</span>
+      </div>
+      <div class="card-body">
+        <span id="val-inv-a" class="metric-value">--.--</span>
+        <span class="metric-unit">A</span>
+      </div>
+      <div class="gauge-bar-bg">
+        <div id="bar-inv-a" class="gauge-bar-val" style="width: 0%; background-color: var(--blue);"></div>
+      </div>
+      <div class="card-subtext">
+        <span>CT Clamp Metrology</span>
+        <span>Max: 100A</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Inverter Power Factor</span>
+        <span class="card-badge">cos φ</span>
+      </div>
+      <div class="card-body">
+        <span id="val-inv-pf" class="metric-value">-.--</span>
+        <span class="metric-unit">PF</span>
+      </div>
+      <div class="gauge-bar-bg">
+        <div id="bar-inv-pf" class="gauge-bar-val" style="width: 0%; background-color: var(--cyan);"></div>
+      </div>
+      <div class="card-subtext">
+        <span>Load Efficiency</span>
+        <span id="stat-inv-pf">Ideal: 1.00</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Inverter Energy Consumed</span>
+        <span class="card-badge">Inverter Rail</span>
+      </div>
+      <div class="card-body">
+        <span id="val-inv-kwh" class="metric-value">--.--</span>
+        <span class="metric-unit">kWh</span>
+      </div>
+      <div class="gauge-bar-bg">
+        <div class="gauge-bar-val" style="width: 100%; background-color: var(--green);"></div>
+      </div>
+      <div class="card-subtext">
+        <span>Total Energy Consumed</span>
+        <span>NVS Persisted</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="history-section">
+    <div class="history-header">
+      <h2>Historical Outages (Last 10 Events)</h2>
+      <button id="btn-refresh-history" class="btn-refresh">↻ Refresh History</button>
+    </div>
+    <div class="table-container">
+      <table>
+        <thead>
+        <tr>
+          <th>#</th>
+          <th>Start Time</th>
+          <th>Duration</th>
+          <th>Energy Consumed</th>
+          <th>Pre-Trip Voltage</th>
+          <th>Initial Load</th>
+        </tr>
+        </thead>
+        <tbody id="history-table-body">
+        <tr>
+          <td colspan="6" class="empty-state">Loading outage history...</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    <span>VoltWatch Headless Metrology & Sentinel • Zero Server Dependency</span>
+    <span>REST: <a id="link-api-status" href="/api/status" target="_blank" rel="noopener noreferrer">/api/status</a> | History: <a id="link-api-history" href="/api/history" target="_blank" rel="noopener noreferrer">/api/history</a> | SSE: <a id="link-api-events" href="/api/events" target="_blank" rel="noopener noreferrer">/api/events</a></span>
+  </footer>
+</div>
+
+<div id="settings-modal" class="modal-backdrop" style="display: none;">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3>Target Device Settings</h3>
+      <button id="btn-close-modal" class="modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-desc">
+        VoltWatch runs as a decoupled static application. Enter the IP or hostname of your ESP32 device to connect:
+      </p>
+      <div class="form-group">
+        <label for="input-target-ip">Device Host / Base URL:</label>
+        <input id="input-target-ip" type="text" class="modal-input" placeholder="http://192.168.1.17" spellcheck="false" />
+      </div>
+      <div class="preset-pills">
+        <span>Presets:</span>
+        <button type="button" class="preset-btn" data-target="http://192.168.1.17">192.168.1.17</button>
+        <button type="button" class="preset-btn" data-target="http://voltwatch.local">voltwatch.local</button>
+        <button type="button" class="preset-btn" data-target="">Auto / Reset</button>
+      </div>
+
+      <div id="mixed-content-warning" class="mixed-content-banner" style="display: none;">
+        <span class="warn-icon">⚠️</span>
         <div>
-          <h1>VoltWatch</h1>
-          <p>Edge Metrology & Outage Sentinel</p>
+          <strong>Mixed Content Warning:</strong> Browser Mixed Content policy may block HTTP calls from an HTTPS host. Click the tune/padlock icon in the address bar -&gt; Site Settings -&gt; set 'Insecure content' to 'Allow', or run locally via file://.
         </div>
       </div>
-      <div class="header-right">
-        <div class="conn-badge" id="badge-connection" style="cursor: pointer;" title="Target Device Status (Click to edit)">
-          <span id="conn-dot" class="conn-dot"></span>
-          <span id="conn-text">Connecting...</span>
-          <button id="btn-open-settings" class="gear-btn" title="Configure Target Device" aria-label="Settings">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
-          </button>
-        </div>
-        <div class="conn-badge">
-          <span>Uptime:</span>
-          <strong id="val-uptime">--</strong>
-        </div>
-        <div id="status-pill" class="status-pill online">
-          <span class="pulse-dot"></span>
-          <span id="status-pill-text">GRID ONLINE</span>
-        </div>
-      </div>
-    </header>
 
-    <!-- Hero: Battery Estimator Card -->
-    <div class="hero-card">
-      <div class="battery-info">
-        <div class="battery-label">Inverter Battery Backup Estimator</div>
-        <div id="battery-runtime-val" class="battery-time">--h --m</div>
-        <div id="battery-runtime-sub" class="battery-sub">Awaiting instantaneous telemetry...</div>
-      </div>
-      <div class="battery-visual">
-        <div class="battery-bar-container">
-          <div id="battery-bar" class="battery-bar-fill" style="width: 100%;"></div>
+      <div class="conn-diagnostics">
+        <div class="diag-row">
+          <span class="diag-label">Active Polling URL:</span>
+          <code id="diag-url">--</code>
         </div>
-        <div class="battery-meta">
-          <span>0 min</span>
-          <span id="battery-pct-label">Estimated Autonomy</span>
-          <span>Max Safe DoD (80%)</span>
+        <div class="diag-row">
+          <span class="diag-label">Channel:</span>
+          <span id="diag-channel" class="diag-val">Initializing...</span>
+        </div>
+        <div class="diag-row">
+          <span class="diag-label">Last HTTP Status:</span>
+          <span id="diag-status" class="diag-val">--</span>
         </div>
       </div>
     </div>
-
-    <!-- Metrology Section -->
-    <div class="section-title">
-      <span>Live AC Metrology</span>
-    </div>
-
-    <div class="metrics-grid">
-      <!-- Grid Voltage -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Grid Mains Voltage</span>
-          <span class="card-badge">PZEM #1</span>
-        </div>
-        <div class="card-body">
-          <span id="val-grid-v" class="metric-value">--.-</span>
-          <span class="metric-unit">V</span>
-        </div>
-        <div class="gauge-bar-bg">
-          <div id="bar-grid-v" class="gauge-bar-val" style="width: 0%; background-color: var(--green);"></div>
-        </div>
-        <div class="card-subtext">
-          <span>Nominal: 230V</span>
-          <span id="stat-grid-v">Online Range</span>
-        </div>
-      </div>
-
-      <!-- Grid Frequency -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Grid Frequency</span>
-          <span class="card-badge">50 Hz Base</span>
-        </div>
-        <div class="card-body">
-          <span id="val-grid-f" class="metric-value">--.-</span>
-          <span class="metric-unit">Hz</span>
-        </div>
-        <div class="gauge-bar-bg">
-          <div id="bar-grid-f" class="gauge-bar-val" style="width: 50%; background-color: var(--cyan);"></div>
-        </div>
-        <div class="card-subtext">
-          <span>Target: 50.0 Hz</span>
-          <span>±1.0 Hz Tolerance</span>
-        </div>
-      </div>
-
-      <!-- Inverter Active Load -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Inverter Active Load</span>
-          <span class="card-badge">PZEM #2</span>
-        </div>
-        <div class="card-body">
-          <span id="val-inv-w" class="metric-value">--.-</span>
-          <span class="metric-unit">W</span>
-        </div>
-        <div class="gauge-bar-bg">
-          <div id="bar-inv-w" class="gauge-bar-val" style="width: 0%; background-color: var(--amber);"></div>
-        </div>
-        <div class="card-subtext">
-          <span>Instantaneous Load</span>
-          <span id="stat-inv-w">Capacity: 2000W</span>
-        </div>
-      </div>
-
-      <!-- Inverter Current -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">INVERTER LOAD CURRENT</span>
-          <span class="card-badge">AC True RMS</span>
-        </div>
-        <div class="card-body">
-          <span id="val-inv-a" class="metric-value">--.--</span>
-          <span class="metric-unit">A</span>
-        </div>
-        <div class="gauge-bar-bg">
-          <div id="bar-inv-a" class="gauge-bar-val" style="width: 0%; background-color: var(--blue);"></div>
-        </div>
-        <div class="card-subtext">
-          <span>CT Clamp Metrology</span>
-          <span>Max: 100A</span>
-        </div>
-      </div>
-
-      <!-- Power Factor -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">INVERTER POWER FACTOR</span>
-          <span class="card-badge">cos φ</span>
-        </div>
-        <div class="card-body">
-          <span id="val-inv-pf" class="metric-value">-.--</span>
-          <span class="metric-unit">PF</span>
-        </div>
-        <div class="gauge-bar-bg">
-          <div id="bar-inv-pf" class="gauge-bar-val" style="width: 0%; background-color: var(--cyan);"></div>
-        </div>
-        <div class="card-subtext">
-          <span>Load Efficiency</span>
-          <span id="stat-inv-pf">Ideal: 1.00</span>
-        </div>
-      </div>
-
-      <!-- Cumulative Energy -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">INVERTER ENERGY CONSUMED</span>
-          <span class="card-badge">Inverter Rail</span>
-        </div>
-        <div class="card-body">
-          <span id="val-inv-kwh" class="metric-value">--.--</span>
-          <span class="metric-unit">kWh</span>
-        </div>
-        <div class="gauge-bar-bg">
-          <div class="gauge-bar-val" style="width: 100%; background-color: var(--green);"></div>
-        </div>
-        <div class="card-subtext">
-          <span>Total Energy Consumed</span>
-          <span>NVS Persisted</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Outage History Table -->
-    <div class="history-section">
-      <div class="history-header">
-        <h2>Historical Outages (Last 10 Events)</h2>
-        <button id="btn-refresh-history" class="btn-refresh">↻ Refresh History</button>
-      </div>
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Start Time</th>
-              <th>Duration</th>
-              <th>Energy Consumed</th>
-              <th>Pre-Trip Voltage</th>
-              <th>Initial Load</th>
-            </tr>
-          </thead>
-          <tbody id="history-table-body">
-            <tr>
-              <td colspan="6" class="empty-state">Loading outage history...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <footer>
-      <span>VoltWatch Headless Metrology & Sentinel • Zero Server Dependency</span>
-      <span>REST: <a id="link-api-status" href="/api/status" target="_blank">/api/status</a> | History: <a id="link-api-history" href="/api/history" target="_blank">/api/history</a> | SSE: <a id="link-api-events" href="/api/events" target="_blank">/api/events</a></span>
-    </footer>
-  </div>
-
-  <!-- Target Device Settings Modal -->
-  <div id="settings-modal" class="modal-backdrop" style="display: none;">
-    <div class="modal-dialog">
-      <div class="modal-header">
-        <h3>Target Device Settings</h3>
-        <button id="btn-close-modal" class="modal-close" aria-label="Close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-desc">
-          VoltWatch is running as a decoupled Single Page Application (SPA). Enter the IP or hostname of your ESP32 device to connect:
-        </p>
-        <div class="form-group">
-          <label for="input-target-ip">Device Host / Base URL:</label>
-          <input id="input-target-ip" type="text" class="modal-input" placeholder="http://192.168.1.17" spellcheck="false" />
-        </div>
-        <div class="preset-pills">
-          <span>Presets:</span>
-          <button type="button" class="preset-btn" data-target="http://192.168.1.17">192.168.1.17</button>
-          <button type="button" class="preset-btn" data-target="http://voltwatch.local">voltwatch.local</button>
-          <button type="button" class="preset-btn" data-target="">Auto / Reset</button>
-        </div>
-
-        <!-- Mixed-Content Warning Banner -->
-        <div id="mixed-content-warning" class="mixed-content-banner" style="display: none;">
-          <span class="warn-icon">⚠️</span>
-          <div>
-            <strong>Mixed Content Warning:</strong> Browser Mixed Content policy may block HTTP calls from an HTTPS host. Click the tune/padlock icon in the address bar -&gt; Site Settings -&gt; set 'Insecure content' to 'Allow', or run locally via file://.
-          </div>
-        </div>
-
-        <!-- Inline Connection Diagnostics -->
-        <div class="conn-diagnostics">
-          <div class="diag-row">
-            <span class="diag-label">Active Polling URL:</span>
-            <code id="diag-url">--</code>
-          </div>
-          <div class="diag-row">
-            <span class="diag-label">Channel:</span>
-            <span id="diag-channel" class="diag-val">Initializing...</span>
-          </div>
-          <div class="diag-row">
-            <span class="diag-label">Last HTTP Status:</span>
-            <span id="diag-status" class="diag-val">--</span>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button id="btn-cancel-settings" class="btn-secondary">Cancel</button>
-        <button id="btn-save-settings" class="btn-primary">Save & Connect</button>
-      </div>
+    <div class="modal-footer">
+      <button id="btn-cancel-settings" class="btn-secondary">Cancel</button>
+      <button id="btn-save-settings" class="btn-primary">Save & Connect</button>
     </div>
   </div>
+</div>
 
-  <script>
-    (function () {
-      let lastGridStatus = null;
-      let sseEventSource = null;
-      let fallbackInterval = null;
+<script>
+  (function () {
+    let lastGridStatus = null;
+    let sseEventSource = null;
+    let fallbackInterval = null;
 
-      // Headless API / Dynamic Endpoint Resolution
-      const DEFAULT_TARGET = 'http://192.168.1.17';
+    const DEFAULT_TARGET = 'http://192.168.1.17';
 
-      function resolveBase() {
-        try {
-          const custom = localStorage.getItem('voltwatch_target_ip');
-          if (custom && custom.trim()) {
-            let c = custom.trim();
-            if (!c.startsWith('http://') && !c.startsWith('https://')) {
-              c = 'http://' + c;
-            }
-            return c.replace(/\/+$/, '');
+    function resolveBase() {
+      try {
+        const custom = localStorage.getItem('voltwatch_target_ip');
+        if (custom && custom.trim()) {
+          let c = custom.trim();
+          if (!c.startsWith('http://') && !c.startsWith('https://')) {
+            c = 'http://' + c;
           }
-        } catch (e) {
-          console.warn('localStorage not accessible:', e);
+          return c.replace(/\/+$/, '');
         }
-
-        // Fallback to origin if served directly from the physical board
-        if (window.location.protocol === 'http:' && 
-            window.location.hostname !== 'localhost' && 
-            window.location.hostname !== '127.0.0.1' && 
-            !window.location.hostname.endsWith('github.io')) {
-          return window.location.origin;
-        }
-
-        return DEFAULT_TARGET;
+      } catch (e) {
+        console.warn('localStorage not accessible:', e);
       }
 
-      let API_BASE = resolveBase();
-
-      function updateFooterLinks() {
-        const base = API_BASE || '';
-        const lStatus = document.getElementById('link-api-status');
-        const lHist = document.getElementById('link-api-history');
-        const lEvents = document.getElementById('link-api-events');
-        if (lStatus) lStatus.href = `${base}/api/status`;
-        if (lHist) lHist.href = `${base}/api/history`;
-        if (lEvents) lEvents.href = `${base}/api/events`;
+      if (window.location.protocol === 'http:' &&
+          window.location.hostname !== 'localhost' &&
+          window.location.hostname !== '127.0.0.1' &&
+          !window.location.hostname.endsWith('github.io')) {
+        return window.location.origin;
       }
 
-      function switchTarget(rawVal) {
-        const val = (rawVal || '').trim();
-        try {
-          if (!val || val === window.location.origin) {
-            localStorage.removeItem('voltwatch_target_ip');
-          } else {
-            let normalized = val;
-            if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-              normalized = 'http://' + normalized;
-            }
-            normalized = normalized.replace(/\/+$/, '');
-            localStorage.setItem('voltwatch_target_ip', normalized);
+      return DEFAULT_TARGET;
+    }
+
+    let API_BASE = resolveBase();
+
+    function updateFooterLinks() {
+      const base = API_BASE || '';
+      const lStatus = document.getElementById('link-api-status');
+      const lHist = document.getElementById('link-api-history');
+      const lEvents = document.getElementById('link-api-events');
+      if (lStatus) lStatus.href = `${base}/api/status`;
+      if (lHist) lHist.href = `${base}/api/history`;
+      if (lEvents) lEvents.href = `${base}/api/events`;
+    }
+
+    function switchTarget(rawVal) {
+      const val = (rawVal || '').trim();
+      try {
+        if (!val || val === window.location.origin) {
+          localStorage.removeItem('voltwatch_target_ip');
+        } else {
+          let normalized = val;
+          if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+            normalized = 'http://' + normalized;
           }
-        } catch (e) {
-          console.warn('Failed saving target IP:', e);
+          normalized = normalized.replace(/\/+$/, '');
+          localStorage.setItem('voltwatch_target_ip', normalized);
         }
+      } catch (e) {
+        console.warn('Failed saving target IP:', e);
+      }
 
-        API_BASE = resolveBase();
-        const input = document.getElementById('input-target-ip');
-        if (input) {
-          input.value = API_BASE || window.location.origin || DEFAULT_TARGET;
-        }
-        updateFooterLinks();
+      API_BASE = resolveBase();
+      const input = document.getElementById('input-target-ip');
+      if (input) {
+        input.value = API_BASE || window.location.origin || DEFAULT_TARGET;
+      }
+      updateFooterLinks();
 
-        // Reset network listeners
-        if (sseEventSource) {
-          sseEventSource.close();
-          sseEventSource = null;
-        }
-        if (fallbackInterval) {
-          clearInterval(fallbackInterval);
-          fallbackInterval = null;
-        }
-        setConnected(false, 'Connecting...');
-        initSSE();
+      if (sseEventSource) {
+        sseEventSource.close();
+        sseEventSource = null;
+      }
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
+      }
+      setConnected(false, 'Connecting...');
+      initSSE();
+      fetchHistory();
+      pollStatus();
+    }
+
+    function formatDuration(sec) {
+      if (!sec || sec <= 0) return "0s";
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      if (h > 0) return `${h}h ${m}m ${s}s`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function formatUptime(sec) {
+      if (!sec) return "0s";
+      const d = Math.floor(sec / 86400);
+      const h = Math.floor((sec % 86400) / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      if (d > 0) return `${d}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m ${s}s`;
+      return `${m}m ${s}s`;
+    }
+
+    function formatTimestamp(ts) {
+      if (!ts || ts === 0) return "--";
+      if (ts > 1000000000) {
+        const d = new Date(ts * 1000);
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+      }
+      return `Uptime +${formatDuration(ts)}`;
+    }
+
+    function updateUI(data) {
+      if (!data) return;
+
+      if (data.uptime_seconds !== undefined) {
+        document.getElementById('val-uptime').textContent = formatUptime(data.uptime_seconds);
+      }
+
+      const grid = data.grid || {};
+      const isOnline = (grid.status === 'ONLINE');
+      const pill = document.getElementById('status-pill');
+      const pillText = document.getElementById('status-pill-text');
+
+      if (isOnline) {
+        pill.className = 'status-pill online';
+        pillText.textContent = 'GRID ONLINE';
+      } else {
+        pill.className = 'status-pill offline';
+        pillText.textContent = 'GRID DOWN';
+      }
+
+      if (lastGridStatus !== null && lastGridStatus !== grid.status) {
         fetchHistory();
+      }
+      lastGridStatus = grid.status;
+
+      const gv = (grid.voltage !== undefined) ? grid.voltage : 0;
+      document.getElementById('val-grid-v').textContent = gv.toFixed(1);
+      const vPct = Math.min(100, Math.max(0, (gv / 280) * 100));
+      const barV = document.getElementById('bar-grid-v');
+      barV.style.width = vPct + '%';
+      barV.style.backgroundColor = isOnline ? 'var(--green)' : 'var(--red)';
+
+      const gf = (grid.frequency !== undefined) ? grid.frequency : 0;
+      document.getElementById('val-grid-f').textContent = gf.toFixed(1);
+      const fPct = Math.min(100, Math.max(0, ((gf - 45) / 10) * 100));
+      document.getElementById('bar-grid-f').style.width = fPct + '%';
+
+      const inv = data.inverter || {};
+      const w = (inv.load_watts !== undefined) ? inv.load_watts : 0;
+      const a = (inv.current_amps !== undefined) ? inv.current_amps : 0;
+      const pf = (inv.power_factor !== undefined) ? inv.power_factor : 0;
+      const kwh = (inv.energy_kwh !== undefined) ? inv.energy_kwh : 0;
+
+      document.getElementById('val-inv-w').textContent = w.toFixed(1);
+      document.getElementById('bar-inv-w').style.width = Math.min(100, (w / 2000) * 100) + '%';
+
+      document.getElementById('val-inv-a').textContent = a.toFixed(2);
+      document.getElementById('bar-inv-a').style.width = Math.min(100, (a / 15) * 100) + '%';
+
+      document.getElementById('val-inv-pf').textContent = pf.toFixed(2);
+      document.getElementById('bar-inv-pf').style.width = Math.min(100, Math.max(0, pf * 100)) + '%';
+
+      document.getElementById('val-inv-kwh').textContent = kwh.toFixed(2);
+
+      const batt = data.battery || {};
+      const mins = batt.est_runtime_minutes || 0;
+      const bHours = Math.floor(mins / 60);
+      const bMins = mins % 60;
+      document.getElementById('battery-runtime-val').textContent = `${bHours}h ${bMins}m`;
+      document.getElementById('battery-runtime-sub').textContent = `${mins} minutes autonomy estimated at current load (${w.toFixed(0)} W)`;
+
+      const battBar = document.getElementById('battery-bar');
+      const battPct = Math.min(100, Math.max(5, (mins / 360) * 100));
+      battBar.style.width = battPct + '%';
+      if (mins < 60) {
+        battBar.className = 'battery-bar-fill low';
+      } else {
+        battBar.className = 'battery-bar-fill';
+      }
+    }
+
+    let lastHttpStatus = '--';
+    let activeChannel = 'Initializing...';
+
+    function checkMixedContent(targetUrl) {
+      const warningEl = document.getElementById('mixed-content-warning');
+      if (!warningEl) return;
+      const urlToCheck = (targetUrl !== undefined ? targetUrl : (API_BASE || '')).trim();
+      const isHttpsHost = (window.location.protocol === 'https:');
+      const isHttpTarget = urlToCheck.startsWith('http://');
+      warningEl.style.display = (isHttpsHost && isHttpTarget) ? 'flex' : 'none';
+    }
+
+    function updateDiagnostics(channel, statusText, isError) {
+      activeChannel = channel || activeChannel;
+      lastHttpStatus = statusText || lastHttpStatus;
+
+      const diagUrl = document.getElementById('diag-url');
+      const diagChannel = document.getElementById('diag-channel');
+      const diagStatus = document.getElementById('diag-status');
+      const badge = document.getElementById('badge-connection');
+
+      const fullUrl = `${API_BASE || window.location.origin}/api/status`;
+      if (diagUrl) diagUrl.textContent = fullUrl;
+      if (diagChannel) {
+        diagChannel.textContent = activeChannel;
+        diagChannel.className = isError ? 'diag-val err' : (activeChannel.includes('SSE') || activeChannel.includes('Poll') ? 'diag-val ok' : 'diag-val');
+      }
+      if (diagStatus) {
+        diagStatus.textContent = lastHttpStatus;
+        diagStatus.className = isError ? 'diag-val err' : 'diag-val ok';
+      }
+      if (badge) {
+        badge.title = `Target: ${fullUrl}\nChannel: ${activeChannel}\nStatus: ${lastHttpStatus}\n(Click to configure)`;
+      }
+    }
+
+    function fetchHistory() {
+      fetch(`${API_BASE}/api/history`, { mode: 'cors' })
+        .then(res => {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(list => {
+          const tbody = document.getElementById('history-table-body');
+          if (!Array.isArray(list) || list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No historical outages recorded. Grid operating normally.</td></tr>';
+            return;
+          }
+
+          let html = '';
+          list.forEach((item, idx) => {
+            const num = idx + 1;
+            const startStr = formatTimestamp(item.start_timestamp);
+            const durationStr = formatDuration(item.duration_seconds);
+            const kwh = (item.energy_consumed_kwh !== undefined) ? item.energy_consumed_kwh.toFixed(3) + ' kWh' : '--';
+            const vPre = (item.grid_voltage_before_trip !== undefined) ? item.grid_voltage_before_trip.toFixed(1) + ' V' : '--';
+            const loadW = (item.initial_load_watts !== undefined) ? item.initial_load_watts.toFixed(1) + ' W' : '--';
+
+            html += `<tr>
+              <td><strong>#${num}</strong></td>
+              <td>${startStr}</td>
+              <td>${durationStr}</td>
+              <td>${kwh}</td>
+              <td>${vPre}</td>
+              <td>${loadW}</td>
+            </tr>`;
+          });
+          tbody.innerHTML = html;
+        })
+        .catch(err => {
+          console.warn('Error fetching history:', err);
+        });
+    }
+
+    function pollStatus() {
+      fetch(`${API_BASE}/api/status`, { mode: 'cors' })
+        .then(res => {
+          const statusMsg = `${res.status} ${res.statusText || 'OK'}`;
+          if (!res.ok) {
+            updateDiagnostics('HTTP Polling', statusMsg, true);
+            throw new Error(statusMsg);
+          }
+          updateDiagnostics('HTTP Polling', statusMsg, false);
+          return res.json();
+        })
+        .then(data => {
+          updateUI(data);
+          setConnected(true, 'Live Polling');
+        })
+        .catch(err => {
+          const isMixedBlocked = (window.location.protocol === 'https:' && API_BASE.startsWith('http://'));
+          const errMsg = isMixedBlocked
+            ? 'Blocked by Mixed-Content Policy (HTTPS host -> HTTP target)'
+            : `Network Error (${err.message || 'Failed to fetch'})`;
+          updateDiagnostics('HTTP Polling', errMsg, true);
+          setConnected(false, 'Disconnected');
+        });
+    }
+
+    function setConnected(connected, label) {
+      const dot = document.getElementById('conn-dot');
+      const text = document.getElementById('conn-text');
+      const host = API_BASE ? API_BASE.replace(/^https?:\/\//, '') : (window.location.host || 'device');
+      if (connected) {
+        dot.className = 'conn-dot';
+        text.textContent = `${label || 'Live'} (${host})`;
+      } else {
+        dot.className = 'conn-dot disconnected';
+        text.textContent = `${label || 'Disconnected'} (${host})`;
+      }
+    }
+
+    function initSSE() {
+      if (!window.EventSource) {
+        console.warn('Browser does not support SSE, using polling fallback');
+        updateDiagnostics('HTTP Fallback', 'No EventSource Support', false);
+        fallbackInterval = setInterval(pollStatus, 2000);
+        pollStatus();
+        return;
+      }
+
+      try {
+        updateDiagnostics('SSE Connecting', 'Connecting...', false);
+        sseEventSource = new EventSource(`${API_BASE}/api/events`);
+
+        sseEventSource.onopen = function () {
+          setConnected(true, 'Live SSE');
+          updateDiagnostics('SSE Stream', '200 Connected (Streaming)', false);
+          if (fallbackInterval) {
+            clearInterval(fallbackInterval);
+            fallbackInterval = null;
+          }
+        };
+
+        sseEventSource.addEventListener('status', function (e) {
+          try {
+            const data = JSON.parse(e.data);
+            updateUI(data);
+            setConnected(true, 'Live SSE');
+            updateDiagnostics('SSE Stream', '200 Active (1Hz Push)', false);
+          } catch (err) {
+            console.error('Error parsing SSE status:', err);
+          }
+        });
+
+        sseEventSource.onmessage = function (e) {
+          try {
+            const data = JSON.parse(e.data);
+            updateUI(data);
+            setConnected(true, 'Live SSE');
+            updateDiagnostics('SSE Stream', '200 Active (1Hz Push)', false);
+          } catch (err) {
+            console.error('Error parsing SSE message:', err);
+          }
+        };
+
+        sseEventSource.onerror = function () {
+          setConnected(false, 'SSE Reconnecting...');
+          const isMixedBlocked = (window.location.protocol === 'https:' && API_BASE.startsWith('http://'));
+          const errMsg = isMixedBlocked
+            ? 'Blocked by Mixed-Content Policy (HTTPS host -> HTTP target)'
+            : 'SSE Connection Dropped / Reconnecting';
+          updateDiagnostics('SSE Disconnected', errMsg, true);
+          if (!fallbackInterval) {
+            fallbackInterval = setInterval(pollStatus, 2500);
+          }
+        };
+      } catch (e) {
+        console.warn('SSE initialization failed:', e);
+        updateDiagnostics('SSE Failed', e.message || 'Initialization Failed', true);
+        fallbackInterval = setInterval(pollStatus, 2000);
         pollStatus();
       }
+    }
 
-      // Format seconds into "Xh Ym Zs"
-      function formatDuration(sec) {
-        if (!sec || sec <= 0) return "0s";
-        const h = Math.floor(sec / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        const s = sec % 60;
-        if (h > 0) return `${h}h ${m}m ${s}s`;
-        if (m > 0) return `${m}m ${s}s`;
-        return `${s}s`;
-      }
+    document.addEventListener('DOMContentLoaded', function () {
+      const modal = document.getElementById('settings-modal');
+      const input = document.getElementById('input-target-ip');
+      const btnOpen = document.getElementById('btn-open-settings');
+      const badgeConn = document.getElementById('badge-connection');
+      const btnClose = document.getElementById('btn-close-modal');
+      const btnCancel = document.getElementById('btn-cancel-settings');
+      const btnSave = document.getElementById('btn-save-settings');
 
-      // Format uptime seconds into "Xd Xh Xm"
-      function formatUptime(sec) {
-        if (!sec) return "0s";
-        const d = Math.floor(sec / 86400);
-        const h = Math.floor((sec % 86400) / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        const s = sec % 60;
-        if (d > 0) return `${d}d ${h}h ${m}m`;
-        if (h > 0) return `${h}h ${m}m ${s}s`;
-        return `${m}m ${s}s`;
-      }
-
-      // Format epoch or uptime timestamp
-      function formatTimestamp(ts) {
-        if (!ts || ts === 0) return "--";
-        if (ts > 1000000000) {
-          const d = new Date(ts * 1000);
-          return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
-        }
-        return `Uptime +${formatDuration(ts)}`;
-      }
-
-      // Update UI with parsed status JSON
-      function updateUI(data) {
-        if (!data) return;
-
-        // System Uptime
-        if (data.uptime_seconds !== undefined) {
-          document.getElementById('val-uptime').textContent = formatUptime(data.uptime_seconds);
-        }
-
-        // Grid Status Pill
-        const grid = data.grid || {};
-        const isOnline = (grid.status === 'ONLINE');
-        const pill = document.getElementById('status-pill');
-        const pillText = document.getElementById('status-pill-text');
-
-        if (isOnline) {
-          pill.className = 'status-pill online';
-          pillText.textContent = 'GRID ONLINE';
-        } else {
-          pill.className = 'status-pill offline';
-          pillText.textContent = 'GRID DOWN';
-        }
-
-        // Check for state change to re-fetch history
-        if (lastGridStatus !== null && lastGridStatus !== grid.status) {
-          fetchHistory();
-        }
-        lastGridStatus = grid.status;
-
-        // Grid Voltage
-        const gv = (grid.voltage !== undefined) ? grid.voltage : 0;
-        document.getElementById('val-grid-v').textContent = gv.toFixed(1);
-        const vPct = Math.min(100, Math.max(0, (gv / 280) * 100));
-        const barV = document.getElementById('bar-grid-v');
-        barV.style.width = vPct + '%';
-        barV.style.backgroundColor = isOnline ? 'var(--green)' : 'var(--red)';
-
-        // Grid Frequency
-        const gf = (grid.frequency !== undefined) ? grid.frequency : 0;
-        document.getElementById('val-grid-f').textContent = gf.toFixed(1);
-        const fPct = Math.min(100, Math.max(0, ((gf - 45) / 10) * 100));
-        document.getElementById('bar-grid-f').style.width = fPct + '%';
-
-        // Inverter Metrics
-        const inv = data.inverter || {};
-        const w = (inv.load_watts !== undefined) ? inv.load_watts : 0;
-        const a = (inv.current_amps !== undefined) ? inv.current_amps : 0;
-        const pf = (inv.power_factor !== undefined) ? inv.power_factor : 0;
-        const kwh = (inv.energy_kwh !== undefined) ? inv.energy_kwh : 0;
-
-        document.getElementById('val-inv-w').textContent = w.toFixed(1);
-        document.getElementById('bar-inv-w').style.width = Math.min(100, (w / 2000) * 100) + '%';
-
-        document.getElementById('val-inv-a').textContent = a.toFixed(2);
-        document.getElementById('bar-inv-a').style.width = Math.min(100, (a / 15) * 100) + '%';
-
-        document.getElementById('val-inv-pf').textContent = pf.toFixed(2);
-        document.getElementById('bar-inv-pf').style.width = Math.min(100, Math.max(0, pf * 100)) + '%';
-
-        document.getElementById('val-inv-kwh').textContent = kwh.toFixed(2);
-
-        // Battery Runtime Estimator
-        const batt = data.battery || {};
-        const mins = batt.est_runtime_minutes || 0;
-        const bHours = Math.floor(mins / 60);
-        const bMins = mins % 60;
-        document.getElementById('battery-runtime-val').textContent = `${bHours}h ${bMins}m`;
-        document.getElementById('battery-runtime-sub').textContent = `${mins} minutes autonomy estimated at current load (${w.toFixed(0)} W)`;
-
-        const battBar = document.getElementById('battery-bar');
-        const battPct = Math.min(100, Math.max(5, (mins / 360) * 100));
-        battBar.style.width = battPct + '%';
-        if (mins < 60) {
-          battBar.className = 'battery-bar-fill low';
-        } else {
-          battBar.className = 'battery-bar-fill';
-        }
-      }
-
-      // Connection Diagnostics & Mixed Content Detection
-      let lastHttpStatus = '--';
-      let activeChannel = 'Initializing...';
-
-      function checkMixedContent(targetUrl) {
-        const warningEl = document.getElementById('mixed-content-warning');
-        if (!warningEl) return;
-        const urlToCheck = (targetUrl !== undefined ? targetUrl : (API_BASE || '')).trim();
-        const isHttpsHost = (window.location.protocol === 'https:');
-        const isHttpTarget = urlToCheck.startsWith('http://');
-        if (isHttpsHost && isHttpTarget) {
-          warningEl.style.display = 'flex';
-        } else {
-          warningEl.style.display = 'none';
-        }
-      }
-
-      function updateDiagnostics(channel, statusText, isError) {
-        activeChannel = channel || activeChannel;
-        lastHttpStatus = statusText || lastHttpStatus;
-
-        const diagUrl = document.getElementById('diag-url');
-        const diagChannel = document.getElementById('diag-channel');
-        const diagStatus = document.getElementById('diag-status');
-        const badge = document.getElementById('badge-connection');
-
-        const fullUrl = `${API_BASE || window.location.origin}/api/status`;
-        if (diagUrl) diagUrl.textContent = fullUrl;
-        if (diagChannel) {
-          diagChannel.textContent = activeChannel;
-          diagChannel.className = isError ? 'diag-val err' : (activeChannel.includes('SSE') || activeChannel.includes('Poll') ? 'diag-val ok' : 'diag-val');
-        }
-        if (diagStatus) {
-          diagStatus.textContent = lastHttpStatus;
-          diagStatus.className = isError ? 'diag-val err' : 'diag-val ok';
-        }
-        if (badge) {
-          badge.title = `Target: ${fullUrl}\nChannel: ${activeChannel}\nStatus: ${lastHttpStatus}\n(Click to configure)`;
-        }
-      }
-
-      // Fetch Outage History from /api/history
-      function fetchHistory() {
-        fetch(`${API_BASE}/api/history`)
-          .then(res => {
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            return res.json();
-          })
-          .then(list => {
-            const tbody = document.getElementById('history-table-body');
-            if (!Array.isArray(list) || list.length === 0) {
-              tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No historical outages recorded. Grid operating normally.</td></tr>';
-              return;
-            }
-
-            let html = '';
-            list.forEach((item, idx) => {
-              const num = idx + 1;
-              const startStr = formatTimestamp(item.start_timestamp);
-              const durationStr = formatDuration(item.duration_seconds);
-              const kwh = (item.energy_consumed_kwh !== undefined) ? item.energy_consumed_kwh.toFixed(3) + ' kWh' : '--';
-              const vPre = (item.grid_voltage_before_trip !== undefined) ? item.grid_voltage_before_trip.toFixed(1) + ' V' : '--';
-              const loadW = (item.initial_load_watts !== undefined) ? item.initial_load_watts.toFixed(1) + ' W' : '--';
-
-              html += `<tr>
-                <td><strong>#${num}</strong></td>
-                <td>${startStr}</td>
-                <td>${durationStr}</td>
-                <td>${kwh}</td>
-                <td>${vPre}</td>
-                <td>${loadW}</td>
-              </tr>`;
-            });
-            tbody.innerHTML = html;
-          })
-          .catch(err => {
-            console.warn('Error fetching history:', err);
-          });
-      }
-
-      // Polling fallback if SSE drops
-      function pollStatus() {
-        fetch(`${API_BASE}/api/status`)
-          .then(res => {
-            const statusMsg = `${res.status} ${res.statusText || 'OK'}`;
-            if (!res.ok) {
-              updateDiagnostics('HTTP Polling', statusMsg, true);
-              throw new Error(statusMsg);
-            }
-            updateDiagnostics('HTTP Polling', statusMsg, false);
-            return res.json();
-          })
-          .then(data => {
-            updateUI(data);
-            setConnected(true, 'Live Polling');
-          })
-          .catch(err => {
-            const isMixedBlocked = (window.location.protocol === 'https:' && API_BASE.startsWith('http://'));
-            const errMsg = isMixedBlocked
-              ? 'Blocked by Mixed-Content Policy (HTTPS host -> HTTP target)'
-              : `Network Error (${err.message || 'Failed to fetch'})`;
-            updateDiagnostics('HTTP Polling', errMsg, true);
-            setConnected(false, 'Disconnected');
-          });
-      }
-
-      function setConnected(connected, label) {
-        const dot = document.getElementById('conn-dot');
-        const text = document.getElementById('conn-text');
-        const host = API_BASE ? API_BASE.replace(/^https?:\/\//, '') : (window.location.host || 'device');
-        if (connected) {
-          dot.className = 'conn-dot';
-          text.textContent = `${label || 'Live'} (${host})`;
-        } else {
-          dot.className = 'conn-dot disconnected';
-          text.textContent = `${label || 'Disconnected'} (${host})`;
-        }
-      }
-
-      // Initialize Server-Sent Events (SSE)
-      function initSSE() {
-        if (!window.EventSource) {
-          console.warn('Browser does not support SSE, using polling fallback');
-          updateDiagnostics('HTTP Fallback', 'No EventSource Support', false);
-          fallbackInterval = setInterval(pollStatus, 2000);
-          pollStatus();
-          return;
-        }
-
-        try {
-          updateDiagnostics('SSE Connecting', 'Connecting...', false);
-          sseEventSource = new EventSource(`${API_BASE}/api/events`);
-
-          sseEventSource.onopen = function () {
-            setConnected(true, 'Live SSE');
-            updateDiagnostics('SSE Stream', '200 Connected (Streaming)', false);
-            if (fallbackInterval) {
-              clearInterval(fallbackInterval);
-              fallbackInterval = null;
-            }
-          };
-
-          sseEventSource.addEventListener('status', function (e) {
-            try {
-              const data = JSON.parse(e.data);
-              updateUI(data);
-              setConnected(true, 'Live SSE');
-              updateDiagnostics('SSE Stream', '200 Active (1Hz Push)', false);
-            } catch (err) {
-              console.error('Error parsing SSE status:', err);
-            }
-          });
-
-          sseEventSource.onmessage = function (e) {
-            try {
-              const data = JSON.parse(e.data);
-              updateUI(data);
-              setConnected(true, 'Live SSE');
-              updateDiagnostics('SSE Stream', '200 Active (1Hz Push)', false);
-            } catch (err) {
-              console.error('Error parsing SSE message:', err);
-            }
-          };
-
-          sseEventSource.onerror = function () {
-            setConnected(false, 'SSE Reconnecting...');
-            const isMixedBlocked = (window.location.protocol === 'https:' && API_BASE.startsWith('http://'));
-            const errMsg = isMixedBlocked
-              ? 'Blocked by Mixed-Content Policy (HTTPS host -> HTTP target)'
-              : 'SSE Connection Dropped / Reconnecting';
-            updateDiagnostics('SSE Disconnected', errMsg, true);
-            if (!fallbackInterval) {
-              fallbackInterval = setInterval(pollStatus, 2500);
-            }
-          };
-        } catch (e) {
-          console.warn('SSE initialization failed:', e);
-          updateDiagnostics('SSE Failed', e.message || 'Initialization Failed', true);
-          fallbackInterval = setInterval(pollStatus, 2000);
-          pollStatus();
-        }
-      }
-
-      // Bootstrap
-      document.addEventListener('DOMContentLoaded', function () {
-        const modal = document.getElementById('settings-modal');
-        const input = document.getElementById('input-target-ip');
-        const btnOpen = document.getElementById('btn-open-settings');
-        const badgeConn = document.getElementById('badge-connection');
-        const btnClose = document.getElementById('btn-close-modal');
-        const btnCancel = document.getElementById('btn-cancel-settings');
-        const btnSave = document.getElementById('btn-save-settings');
-
-        function openModal() {
-          if (modal) {
-            modal.style.display = 'flex';
-            if (input) {
-              const currentSaved = localStorage.getItem('voltwatch_target_ip');
-              input.value = currentSaved !== null ? currentSaved : (API_BASE || DEFAULT_TARGET);
-              checkMixedContent(input.value);
-              updateDiagnostics();
-              input.focus();
-              input.select();
-            }
-          }
-        }
-
-        function closeModal() {
-          if (modal) modal.style.display = 'none';
-        }
-
-        if (btnOpen) btnOpen.addEventListener('click', function (e) { e.stopPropagation(); openModal(); });
-        if (badgeConn) badgeConn.addEventListener('click', openModal);
-        if (btnClose) btnClose.addEventListener('click', closeModal);
-        if (btnCancel) btnCancel.addEventListener('click', closeModal);
-
+      function openModal() {
         if (modal) {
-          modal.addEventListener('click', function (e) {
-            if (e.target === modal) closeModal();
-          });
-        }
-
-        document.addEventListener('keydown', function (e) {
-          if (e.key === 'Escape' && modal && modal.style.display === 'flex') {
-            closeModal();
+          modal.style.display = 'flex';
+          if (input) {
+            const currentSaved = localStorage.getItem('voltwatch_target_ip');
+            input.value = currentSaved !== null ? currentSaved : (API_BASE || DEFAULT_TARGET);
+            checkMixedContent(input.value);
+            updateDiagnostics();
+            input.focus();
+            input.select();
           }
-        });
-
-        // Preset buttons
-        document.querySelectorAll('.preset-btn').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            if (input) {
-              input.value = this.getAttribute('data-target') || '';
-              checkMixedContent(input.value);
-              input.focus();
-            }
-          });
-        });
-
-        if (input) {
-          input.addEventListener('input', function () {
-            checkMixedContent(this.value);
-          });
         }
+      }
 
-        function handleSave() {
-          if (input) switchTarget(input.value);
+      function closeModal() {
+        if (modal) modal.style.display = 'none';
+      }
+
+      if (btnOpen) btnOpen.addEventListener('click', function (e) { e.stopPropagation(); openModal(); });
+      if (badgeConn) badgeConn.addEventListener('click', openModal);
+      if (btnClose) btnClose.addEventListener('click', closeModal);
+      if (btnCancel) btnCancel.addEventListener('click', closeModal);
+
+      if (modal) {
+        modal.addEventListener('click', function (e) {
+          if (e.target === modal) closeModal();
+        });
+      }
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && modal && modal.style.display === 'flex') {
           closeModal();
         }
-
-        if (btnSave) btnSave.addEventListener('click', handleSave);
-        if (input) {
-          input.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') handleSave();
-          });
-        }
-
-        updateFooterLinks();
-        document.getElementById('btn-refresh-history').addEventListener('click', fetchHistory);
-        initSSE();
-        fetchHistory();
-        // Initial status fetch to populate instantly
-        pollStatus();
       });
-    })();
-  </script>
+
+      document.querySelectorAll('.preset-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (input) {
+            input.value = this.getAttribute('data-target') || '';
+            checkMixedContent(input.value);
+            input.focus();
+          }
+        });
+      });
+
+      if (input) {
+        input.addEventListener('input', function () {
+          checkMixedContent(this.value);
+        });
+      }
+
+      function handleSave() {
+        if (input) switchTarget(input.value);
+        closeModal();
+      }
+
+      if (btnSave) btnSave.addEventListener('click', handleSave);
+      if (input) {
+        input.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') handleSave();
+        });
+      }
+
+      updateFooterLinks();
+      document.getElementById('btn-refresh-history').addEventListener('click', fetchHistory);
+      initSSE();
+      fetchHistory();
+      pollStatus();
+    });
+  })();
+</script>
 </body>
 </html>
